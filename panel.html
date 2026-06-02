@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stock Pulse</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Header -->
+  <header id="header">
+    <div class="header-left">
+      <h1>Stock Pulse</h1>
+      <span class="market-time" id="marketTime"></span>
+    </div>
+    <div class="header-right">
+      <button class="tab-btn active" data-tab="chart" title="K线图">K线</button>
+      <button class="tab-btn" data-tab="watchlist" title="自选股">自选</button>
+      <button class="tab-btn" data-tab="portfolio" title="持仓">持仓</button>
+      <button class="icon-btn" id="aiBtn" title="AI 助手 / Skills">AI</button>
+      <button class="icon-btn" id="popoutBtn" title="弹出独立窗口（可调整大小）">&#8599;</button>
+      <button class="icon-btn" id="settingsBtn" title="设置">&#9881;</button>
+    </div>
+  </header>
+
+  <!-- Market index bar -->
+  <div class="market-bar" id="marketBar">
+    <div class="market-bar-loading">加载大盘指数...</div>
+  </div>
+
+  <!-- ============ Chart Tab ============ -->
+  <div id="chartTab" class="tab-content active">
+    <!-- Multi-stock display bar -->
+    <div class="chart-stocks-bar" id="chartStocksBar">
+      <div class="chart-chips-scroll" id="chartChips">
+        <!-- Chips rendered dynamically -->
+      </div>
+      <button class="chip-add-btn" id="chartAddStockBtn" title="添加股票到图表">+</button>
+    </div>
+    <!-- Inline search (shown when clicking +) -->
+    <div class="chart-search-row" id="chartSearchRow" style="display:none">
+      <div class="stock-search-wrap">
+        <input type="text" id="chartStockSearch" placeholder="输入股票代码/名称，回车添加..." autocomplete="off">
+        <div id="chartSearchResults" class="search-dropdown"></div>
+      </div>
+      <button class="chip-close-btn" id="chartSearchClose">&times;</button>
+    </div>
+    <!-- Period buttons -->
+    <div class="period-bar">
+      <div class="period-btns" id="periodBtns">
+        <button class="period-btn" data-period="realtime">分时</button>
+        <button class="period-btn active" data-period="daily">日K</button>
+        <button class="period-btn" data-period="weekly">周K</button>
+        <button class="period-btn" data-period="monthly">月K</button>
+        <button class="period-btn" data-period="yearly">年K</button>
+      </div>
+      <div class="indicator-toggles">
+        <button class="ind-btn" data-ind="boll" title="布林带">BOLL</button>
+        <button class="ind-btn" data-ind="macd" title="MACD">MACD</button>
+        <button class="ind-btn" data-ind="kdj" title="KDJ">KDJ</button>
+        <button class="ind-btn ai-btn" id="chartAiBtn" title="AI 解读当前 K 线">AI</button>
+      </div>
+      <div class="chart-source-toggle">
+        <button class="src-btn active" data-src="portfolio" title="显示持仓股">持仓</button>
+        <button class="src-btn" data-src="watchlist" title="显示自选股">自选</button>
+      </div>
+    </div>
+    <!-- Multi-stock summary table (同花顺风格) -->
+    <div class="stock-summary-table" id="stockSummaryTable"></div>
+    <!-- Current stock info (detail view) -->
+    <div class="stock-info" id="stockInfo">
+      <span class="stock-name" id="stockName">--</span>
+      <span class="stock-price" id="stockPrice">--</span>
+      <span class="stock-change" id="stockChange">--</span>
+      <span class="stock-vol" id="stockVol">--</span>
+    </div>
+    <!-- Chart container -->
+    <div id="chartContainer"></div>
+  </div>
+
+  <!-- ============ Watchlist Tab ============ -->
+  <div id="watchlistTab" class="tab-content">
+    <div class="watchlist-header">
+      <h2>自选股</h2>
+      <div class="wl-actions">
+        <button class="add-btn" id="addWatchBtn">+ 添加</button>
+        <button class="add-btn secondary" id="batchWatchBtn">批量</button>
+        <button class="add-btn secondary ocr-entry-btn" id="ocrWatchBtn">OCR</button>
+        <button class="add-btn secondary" id="groupManageBtn" title="管理分组">分组</button>
+      </div>
+    </div>
+    <div class="group-filter-bar" id="groupFilterBar">
+      <button class="group-filter-btn active" data-group="all">全部</button>
+    </div>
+    <div class="watchlist-table" id="watchlistTable"></div>
+  </div>
+
+  <!-- ============ Portfolio Tab ============ -->
+  <div id="portfolioTab" class="tab-content">
+    <div class="portfolio-header">
+      <h2>我的持仓</h2>
+      <div class="portfolio-summary" id="portfolioSummary"></div>
+    </div>
+    <div class="portfolio-actions-bar">
+      <button class="add-btn" id="addPositionBtn">+ 记录交易</button>
+      <button class="add-btn secondary" id="batchPortfolioBtn">批量导入</button>
+      <button class="add-btn secondary ocr-entry-btn" id="ocrPortfolioBtn">OCR导入</button>
+    </div>
+    <div class="portfolio-view-toggle">
+      <button class="toggle-btn active" data-view="list">列表</button>
+      <button class="toggle-btn" data-view="overlay">叠加K线</button>
+    </div>
+    <div id="portfolioList" class="portfolio-list"></div>
+    <div id="portfolioOverlay" class="portfolio-overlay" style="display:none">
+      <div id="overlayChart"></div>
+    </div>
+  </div>
+
+  <!-- ============ Modals ============ -->
+  <div id="modalOverlay" class="modal-overlay" style="display:none">
+
+    <!-- Add single watchlist stock -->
+    <div id="addWatchModal" class="modal" style="display:none">
+      <div class="modal-header">
+        <h3>添加自选股</h3>
+        <button class="close-btn modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="text" id="watchSearchInput" placeholder="输入股票代码或名称...">
+        <div id="watchSearchResults" class="modal-search-results"></div>
+      </div>
+    </div>
+
+    <!-- Batch add watchlist -->
+    <div id="batchWatchModal" class="modal" style="display:none">
+      <div class="modal-header">
+        <h3>批量添加自选股</h3>
+        <button class="close-btn modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>每行一个股票代码，支持格式：600519、00700.HK、SH600519</label>
+          <textarea id="batchWatchInput" rows="8" placeholder="600519&#10;00700&#10;000858&#10;301155&#10;..."></textarea>
+        </div>
+        <div class="batch-status" id="batchWatchStatus"></div>
+        <button class="primary-btn" id="batchWatchSubmit">识别并添加</button>
+      </div>
+    </div>
+
+    <!-- OCR import -->
+    <div id="ocrModal" class="modal" style="display:none">
+      <div class="modal-header">
+        <h3>OCR 图片识别 / 代码导入</h3>
+        <button class="close-btn modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>上传截图（自选股列表 / 持仓截图），自动识别股票代码</label>
+          <div class="ocr-drop-zone" id="ocrDropZone" tabindex="0">
+            <div class="drop-icon">&#128247;</div>
+            <div>点击、拖拽 或 <kbd>Ctrl</kbd>+<kbd>V</kbd> 粘贴图片</div>
+            <input type="file" id="ocrFileInput" accept="image/*" style="display:none">
+          </div>
+          <div class="ocr-engine-status" id="ocrEngineStatus">检查引擎状态...</div>
+        </div>
+        <div class="ocr-preview" id="ocrPreview" style="display:none">
+          <img id="ocrPreviewImg" alt="preview">
+          <div class="ocr-preview-label">预处理后（灰度 / 拉伸对比度 / 放大）</div>
+        </div>
+        <div class="ocr-progress" id="ocrProgress" style="display:none">
+          <div class="progress-bar"><div class="progress-fill" id="ocrProgressFill"></div></div>
+          <span id="ocrProgressText">识别中...</span>
+        </div>
+        <div class="form-group">
+          <label>代码列表（OCR 完成后可编辑；也可直接输入 / 粘贴代码）</label>
+          <textarea id="ocrResultText" rows="6" placeholder="每行一个代码，例如：&#10;600519&#10;00700&#10;000858"></textarea>
+        </div>
+        <input type="hidden" id="ocrTarget" value="watchlist">
+        <button class="primary-btn" id="ocrSubmitBtn">确认导入</button>
+      </div>
+    </div>
+
+    <!-- Add position modal -->
+    <div id="addPositionModal" class="modal" style="display:none">
+      <div class="modal-header">
+        <h3>记录交易</h3>
+        <button class="close-btn modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>股票</label>
+          <input type="text" id="posStockSearch" placeholder="输入股票代码或名称...">
+          <div id="posSearchResults" class="modal-search-results"></div>
+          <input type="hidden" id="posStockCode">
+          <span id="posStockLabel" class="pos-stock-label"></span>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>方向</label>
+            <select id="posDirection">
+              <option value="buy">买入</option>
+              <option value="sell">卖出</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>价格</label>
+            <input type="number" id="posPrice" step="0.001" placeholder="0.00">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>数量(股)</label>
+            <input type="number" id="posQuantity" step="100" placeholder="0">
+          </div>
+          <div class="form-group">
+            <label>日期</label>
+            <input type="date" id="posDate">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>备注</label>
+          <input type="text" id="posNote" placeholder="可选备注...">
+        </div>
+        <button class="primary-btn" id="savePositionBtn">保存</button>
+      </div>
+    </div>
+
+    <!-- Batch portfolio import -->
+    <div id="batchPortfolioModal" class="modal" style="display:none">
+      <div class="modal-header">
+        <h3>批量导入持仓</h3>
+        <button class="close-btn modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>每行格式：股票代码 买入价 数量 [日期]（价格/数量可省略，后续手动补）</label>
+          <textarea id="batchPortfolioInput" rows="8" placeholder="600519 1800 100 2025-01-15&#10;00700 380 200 2025-03-20&#10;000858 150.5 300&#10;..."></textarea>
+        </div>
+        <div class="batch-status" id="batchPortfolioStatus"></div>
+        <button class="primary-btn" id="batchPortfolioSubmit">识别并导入</button>
+      </div>
+    </div>
+
+    <!-- Alert settings modal -->
+
+    <!-- Settings modal -->
+    <div id="settingsModal" class="modal" style="display:none">
+      <div class="modal-header">
+        <h3>设置</h3>
+        <button class="close-btn modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>自动刷新间隔</label>
+          <select id="refreshInterval">
+            <option value="0">关闭</option>
+            <option value="5">5秒</option>
+            <option value="10" selected>10秒</option>
+            <option value="30">30秒</option>
+            <option value="60">60秒</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>主题</label>
+          <select id="themeSelect">
+            <option value="dark" selected>暗色</option>
+            <option value="light">亮色</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>主题色 <span class="hint">（自定义强调色）</span></label>
+          <div class="accent-color-row">
+            <input type="color" id="accentColor" value="#4fc3f7" class="accent-color-input">
+            <span class="accent-color-label" id="accentColorLabel">#4fc3f7</span>
+            <button class="secondary-btn" id="accentResetBtn" title="恢复默认">重置</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>K线数量</label>
+          <select id="klineCount">
+            <option value="60">60根</option>
+            <option value="120" selected>120根</option>
+            <option value="250">250根</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>大盘指数显示</label>
+          <div id="marketIndicesCheckboxes" class="checkbox-grid"></div>
+          <div class="hint">勾选要显示在顶栏的指数，修改后需刷新面板</div>
+        </div>
+        <hr class="settings-divider">
+        <div class="form-group">
+          <label>实时报价来源（自选股 / 持仓实时列表）</label>
+          <select id="quoteProvider">
+            <!-- 选项由 app.js 启动时按 caps 动态填充 -->
+          </select>
+        </div>
+        <div class="form-group">
+          <label>K线 / 分时来源（K线图、分时图）</label>
+          <select id="klineProvider">
+            <!-- 选项由 app.js 启动时按 caps 动态填充 -->
+          </select>
+        </div>
+        <div class="form-group">
+          <label>海外股实时报价（港股/美股/日股等，留空=同上方）</label>
+          <select id="intlQuoteProvider">
+            <option value="">跟随上方设置</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>海外股K线来源（留空=同上方）</label>
+          <select id="intlKlineProvider">
+            <option value="">跟随上方设置</option>
+          </select>
+        </div>
+        <div class="form-group token-field" data-token-providers="tushare" style="display:none">
+          <label>Tushare Token
+            <a href="https://tushare.pro" target="_blank" rel="noopener" class="help-link">（申请→）</a>
+          </label>
+          <input type="password" id="tushareToken" placeholder="在 tushare.pro 个人中心获取">
+        </div>
+        <div class="form-group token-field" data-token-providers="juhe" style="display:none">
+          <label>聚合数据 API Key
+            <a href="https://www.juhe.cn" target="_blank" rel="noopener" class="help-link">（申请→）</a>
+          </label>
+          <input type="password" id="juheKey" placeholder="在 juhe.cn 申请股票接口 Key">
+        </div>
+        <hr class="settings-divider">
+        <div class="form-group">
+          <label>OCR 识别（基于大模型视觉）</label>
+          <div class="ocr-status-line" id="ocrStatusLine">检查中...</div>
+          <div class="form-hint">OCR 直接复用下方的 LLM 配置（需 API Key + Base URL + 视觉模型）。如未配置，对应页面的「📷 截图识别」按钮会自动禁用。</div>
+        </div>
+        <hr class="settings-divider">
+        <div class="form-group">
+          <label>AI / 大模型（OpenAI 兼容协议）</label>
+          <select id="llmProvider">
+            <option value="openai">OpenAI</option>
+            <option value="deepseek">DeepSeek</option>
+            <option value="qwen">通义千问 (DashScope, OpenAI 兼容模式)</option>
+            <option value="moonshot">月之暗面 Moonshot</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="gemini">Google Gemini（OpenAI 兼容端点）</option>
+            <option value="custom">自定义 (OpenAI 兼容)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>API Base URL</label>
+          <input type="text" id="llmBaseUrl" placeholder="https://api.openai.com/v1">
+        </div>
+        <div class="form-group">
+          <label>API Key</label>
+          <input type="password" id="llmApiKey" placeholder="sk-...">
+        </div>
+        <div class="form-group">
+          <label>对话模型</label>
+          <input type="text" id="llmModel" placeholder="gpt-4o-mini">
+        </div>
+        <div class="form-group">
+          <label>视觉模型 <span class="hint">（OCR 用 · 默认与对话模型一致）</span></label>
+          <input type="text" id="llmVisionModel" placeholder="留空 = 自动跟随对话模型">
+          <div class="hint" style="margin-top:4px">
+            OpenRouter 做 OCR 时，这里必须填支持图片输入的模型；如果跟随了纯文本模型，OCR 会失败。
+          </div>
+        </div>
+        <div class="form-group">
+          <label>最大输出 Token <span class="hint">（AI 对话 / Skill 分析的最大回复长度）</span></label>
+          <input type="number" id="llmMaxTokens" min="100" max="128000" step="100" placeholder="4096">
+          <div class="hint" style="margin-top:4px">
+            推理模型（如 MiMo / DeepSeek-R1）的 reasoning_content 会消耗 token，建议 ≥ 4096。普通模型 2048 足够。
+          </div>
+        </div>
+        <div class="form-group">
+          <label>CORS 代理 URL <span class="hint">（可选，给不愿意返回 CORS 头的厂商用，如 OpenAI / NVIDIA）</span></label>
+          <input type="text" id="corsProxy" placeholder="留空 = 直连；如 https://your-proxy.workers.dev/?url=">
+          <div class="hint" style="margin-top:4px">
+            形如 <code>https://xxx.workers.dev/?url=</code>，请求时会自动把目标 URL 编码后拼到末尾。详见 README。
+          </div>
+        </div>
+        <div class="llm-test-row">
+          <button class="secondary-btn" id="llmTestBtn">测试连接</button>
+          <span class="llm-test-status" id="llmTestStatus"></span>
+          <button class="secondary-btn llm-copy-btn" id="llmCopyBtn" style="display:none" title="复制错误信息便于排查">📋 复制错误</button>
+        </div>
+        <div class="settings-actions">
+          <button class="danger-btn" id="exportDataBtn">导出数据</button>
+          <button class="danger-btn" id="importDataBtn">导入数据</button>
+          <input type="file" id="importFileInput" accept=".json" style="display:none">
+        </div>
+      </div>
+    </div>
+
+    <!-- AI assistant modal -->
+    <div id="aiModal" class="modal" style="display:none">
+      <div class="modal-header">
+        <h3>AI 智能分析</h3>
+        <button class="close-btn modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="ai-stock-info" id="aiStockInfo">请先在 K 线图选择一只股票</div>
+        <div class="form-group">
+          <label>选择分析 Skill</label>
+          <div class="ai-skills-list" id="aiSkillsList"></div>
+        </div>
+        <div class="form-group">
+          <label>补充指令（可选，会拼到 Skill 提示词后）</label>
+          <input type="text" id="aiExtraPrompt" placeholder="例如：重点关注成交量变化">
+        </div>
+        <div class="form-group">
+          <label>结果</label>
+          <textarea id="aiResultText" rows="12" readonly placeholder="点击下方按钮开始分析..."></textarea>
+        </div>
+        <div class="ai-buttons">
+          <button class="primary-btn" id="aiRunBtn">运行分析</button>
+          <button class="secondary-btn" id="aiManageSkillsBtn">管理 Skills</button>
+          <span class="ai-status" id="aiStatus"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Skills management modal -->
+    <div id="skillsModal" class="modal" style="display:none">
+      <div class="modal-header">
+        <h3>Skills 管理</h3>
+        <button class="close-btn modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="skills-tabs">
+          <button class="skills-tab-btn active" data-skills-tab="list">Skill 列表</button>
+          <button class="skills-tab-btn" data-skills-tab="edit">新建 / 编辑</button>
+          <button class="skills-tab-btn" data-skills-tab="import">📥 导入</button>
+        </div>
+        <div id="skillsListPanel">
+          <div class="skills-list-toolbar">
+            <span class="skill-hint">💡 点击「📋 复制」可把 skill 导出为标准 SKILL.md（YAML frontmatter），粘贴到 Claude.ai / Cursor / ChatGPT 等平台直接使用</span>
+          </div>
+          <div class="skills-list" id="skillsList"></div>
+        </div>
+        <div id="skillsEditPanel" style="display:none">
+          <div class="form-group">
+            <label>名称</label>
+            <input type="text" id="skillName" placeholder="例如：财报速览">
+          </div>
+          <div class="form-group">
+            <label>说明（列表中显示）</label>
+            <input type="text" id="skillDesc" placeholder="例如：基于最新财报给出速读结论">
+          </div>
+          <div class="form-group">
+            <label>系统提示词（定义 AI 角色）</label>
+            <textarea id="skillSystem" rows="6" placeholder="你是一位资深 A 股分析师..."></textarea>
+          </div>
+          <div class="form-group">
+            <label>用户提示词模板（可用占位符 {code} {name} {market} {quote} {kline_recent} {kline_summary} {kline_count}）</label>
+            <textarea id="skillTemplate" rows="8" placeholder="请分析 {name}({code}) 的近期走势..."></textarea>
+          </div>
+          <div class="skills-edit-buttons">
+            <button class="primary-btn" id="saveSkillBtn">保存</button>
+            <button class="secondary-btn" id="clearSkillBtn">清空</button>
+            <input type="hidden" id="editingSkillId">
+          </div>
+        </div>
+        <div id="skillsImportPanel" style="display:none">
+          <div class="form-group">
+            <label>粘贴 SKILL.md 内容（YAML frontmatter + Markdown body）</label>
+            <textarea id="skillImportText" rows="14" placeholder="---&#10;name: my-skill&#10;description: 简短描述 + 何时使用&#10;license: MIT&#10;---&#10;&#10;# My Skill&#10;&#10;## 系统提示词&#10;```...&#10;你的系统提示词&#10;```&#10;&#10;## 用户提示词模板&#10;```...&#10;请分析 {name}...&#10;```"></textarea>
+          </div>
+          <div class="skills-import-buttons">
+            <button class="primary-btn" id="importSkillBtn">解析并保存</button>
+            <button class="secondary-btn" id="fillImportExampleBtn">填入示例</button>
+            <span class="skill-import-status" id="skillImportStatus"></span>
+          </div>
+          <div class="skill-hint" style="margin-top:8px">
+            兼容格式：标准 SKILL.md（Anthropic 规范）<br>
+            也可以粘贴本项目「📋 复制」导出的内容
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Group management modal -->
+    <div id="groupModal" class="modal" style="display:none">
+      <div class="modal-header">
+        <h3>分组管理</h3>
+        <button class="close-btn modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>新建分组</label>
+          <div style="display:flex;gap:6px">
+            <input type="text" id="newGroupName" placeholder="分组名称，如：科技股" style="flex:1">
+            <button class="primary-btn" id="addGroupBtn" style="width:auto;margin:0;padding:6px 14px">添加</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>现有分组</label>
+          <div id="groupList" class="skills-list"></div>
+        </div>
+        <hr class="settings-divider">
+        <div class="form-group">
+          <label>移动股票到分组</label>
+          <div class="form-row">
+            <div class="form-group">
+              <select id="assignStockSelect" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg-input);color:var(--text-primary);font-size:12px">
+                <option value="">选择自选股...</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <select id="assignGroupSelect" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg-input);color:var(--text-primary);font-size:12px">
+                <option value="">不分组</option>
+              </select>
+            </div>
+          </div>
+          <button class="secondary-btn" id="assignGroupBtn" style="margin-top:4px">移动</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="lib/lightweight-charts.standalone.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/chart.js"></script>
+  <script src="js/portfolio.js"></script>
+  <script src="js/ocr.js"></script>
+  <script src="js/market.js"></script>
+  <script src="js/llm.js"></script>
+  <script src="js/skills.js"></script>
+  <script src="js/enrichment.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

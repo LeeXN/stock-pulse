@@ -1,0 +1,854 @@
+/* ===== Stock Pulse v1.0.0 - CSS ===== */
+:root {
+  --bg-primary: #1a1a2e;
+  --bg-secondary: #16213e;
+  --bg-card: #1e2a45;
+  --bg-hover: #263654;
+  --bg-input: #0f1729;
+  --text-primary: #e0e0e0;
+  --text-secondary: #8892a4;
+  --text-muted: #5a6478;
+  --accent: #4fc3f7;
+  --accent-rgb: 79,195,247;
+  --up: #ef5350;
+  --down: #26a69a;
+  --up-bg: rgba(239,83,80,0.12);
+  --down-bg: rgba(38,166,154,0.12);
+  --border: #2a3a55;
+  --border-light: #344563;
+  --danger: #ef5350;
+  --modal-bg: rgba(0,0,0,0.6);
+}
+[data-theme="light"] {
+  --bg-primary: #f5f6fa;
+  --bg-secondary: #ffffff;
+  --bg-card: #ffffff;
+  --bg-hover: #eef1f7;
+  --bg-input: #f0f2f5;
+  --text-primary: #1a1a2e;
+  --text-secondary: #5a6478;
+  --text-muted: #8892a4;
+  --accent: #1976d2;
+  --accent-rgb: 25,118,210;
+  --border: #dfe3ec;
+  --border-light: #c8cdd8;
+  --modal-bg: rgba(0,0,0,0.3);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+
+/* === Side Panel adaptive layout === */
+body {
+  width: 100%;
+  height: 100vh;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 12px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+#header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 12px; flex-shrink: 0;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+.header-left { display:flex; align-items:center; gap:10px; }
+.header-left h1 { font-size:14px; font-weight:600; color:var(--accent); }
+.market-time { font-size:11px; color:var(--text-muted); }
+.header-right { display:flex; gap:4px; align-items:center; }
+.tab-btn {
+  padding: 4px 10px; border:none; border-radius:4px;
+  background:transparent; color:var(--text-secondary);
+  cursor:pointer; font-size:12px; transition:all .15s;
+}
+.tab-btn:hover { background:var(--bg-hover); color:var(--text-primary); }
+.tab-btn.active { background:var(--accent); color:#fff; }
+.icon-btn {
+  width:28px; height:28px; border:none; border-radius:4px;
+  background:transparent; color:var(--text-secondary);
+  cursor:pointer; font-size:14px; display:flex; align-items:center; justify-content:center;
+}
+.icon-btn:hover { background:var(--bg-hover); color:var(--text-primary); }
+
+/* Tab content - fill remaining height */
+.tab-content { display:none; flex:1; overflow-y:auto; min-height:0; }
+.tab-content.active { display:flex; flex-direction:column; }
+
+/* === Chart Tab: multi-stock bar === */
+.chart-stocks-bar {
+  display:flex; align-items:center; padding:4px 8px;
+  border-bottom:1px solid var(--border); gap:4px; flex-shrink:0;
+}
+.chart-chips-scroll {
+  display:flex; gap:3px; flex:1; overflow-x:auto; align-items:center;
+}
+.chip {
+  padding:2px 8px; border-radius:10px; font-size:11px;
+  cursor:pointer; border:1px solid var(--border);
+  background:var(--bg-card); color:var(--text-secondary);
+  transition:all .15s; white-space:nowrap; display:flex; align-items:center; gap:3px;
+}
+.chip:hover { border-color:var(--accent); color:var(--accent); }
+.chip.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+.chip .chip-remove {
+  font-size:10px; opacity:0.5; cursor:pointer; margin-left:2px;
+  line-height:1;
+}
+.chip .chip-remove:hover { opacity:1; color:var(--danger); }
+.chip-add-btn {
+  width:22px; height:22px; border-radius:50%; border:1px dashed var(--border);
+  background:transparent; color:var(--text-muted); cursor:pointer;
+  font-size:14px; display:flex; align-items:center; justify-content:center;
+  flex-shrink:0; transition:all .15s;
+}
+.chip-add-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+/* Chart inline search */
+.chart-search-row {
+  display:flex; gap:6px; padding:4px 8px; align-items:center;
+  background:var(--bg-secondary); border-bottom:1px solid var(--border); flex-shrink:0;
+}
+.chip-close-btn {
+  width:22px; height:22px; border:none; background:none;
+  color:var(--text-muted); cursor:pointer; font-size:16px;
+}
+.chip-close-btn:hover { color:var(--text-primary); }
+
+/* Period bar */
+.period-bar {
+  display:flex; flex-wrap:wrap; gap:4px 8px; align-items:center;
+  padding:4px 8px; border-bottom:1px solid var(--border); flex-shrink:0;
+}
+.period-btns { display:flex; gap:2px; }
+.period-btn {
+  padding:3px 8px; border:none; border-radius:3px;
+  background:transparent; color:var(--text-secondary);
+  cursor:pointer; font-size:11px; transition:all .15s;
+}
+.period-btn:hover { background:var(--bg-hover); }
+.period-btn.active { background:var(--bg-hover); color:var(--accent); font-weight:600; }
+.chart-source-toggle { display:flex; gap:2px; }
+.src-btn {
+  padding:2px 8px; border:1px solid var(--border); border-radius:3px;
+  background:transparent; color:var(--text-muted); cursor:pointer;
+  font-size:10px; transition:all .15s;
+}
+.src-btn:hover { border-color:var(--accent); color:var(--accent); }
+.src-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+
+/* Stock info */
+.stock-info {
+  display:flex; gap:12px; padding:4px 12px; align-items:baseline;
+  font-size:12px; flex-shrink:0;
+}
+.stock-name { font-weight:600; }
+.stock-price { font-size:16px; font-weight:700; }
+.stock-change { font-size:12px; }
+.stock-vol { color:var(--text-muted); margin-left:auto; }
+.price-up { color:var(--up); }
+.price-down { color:var(--down); }
+
+/* Chart container - flex fill */
+#chartContainer { flex:1; min-height:200px; padding:0 4px; }
+#overlayChart { width:100%; height:340px; padding:0 4px; }
+
+/* === Search === */
+.stock-search-wrap { position:relative; flex:1; }
+.stock-search-wrap input, #watchSearchInput, #posStockSearch {
+  width:100%; padding:5px 8px; border-radius:4px;
+  border:1px solid var(--border); background:var(--bg-input);
+  color:var(--text-primary); font-size:12px; outline:none;
+}
+.stock-search-wrap input:focus, #watchSearchInput:focus, #posStockSearch:focus {
+  border-color:var(--accent);
+}
+.search-dropdown, .modal-search-results {
+  position:absolute; top:100%; left:0; right:0; z-index:100;
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:0 0 4px 4px; max-height:200px; overflow-y:auto;
+  display:none;
+}
+.search-dropdown.show, .modal-search-results.show { display:block; }
+.search-item {
+  padding:6px 10px; cursor:pointer; display:flex;
+  justify-content:space-between; font-size:12px;
+}
+.search-item:hover { background:var(--bg-hover); }
+.search-item .code { color:var(--accent); }
+.search-item .name { color:var(--text-primary); }
+.search-item .market { color:var(--text-muted); font-size:10px; }
+
+/* === Watchlist Tab === */
+.watchlist-header, .portfolio-header {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:8px 12px; border-bottom:1px solid var(--border); flex-shrink:0;
+}
+.watchlist-header h2, .portfolio-header h2 { font-size:14px; }
+
+/* Group filter bar */
+.group-filter-bar {
+  display:flex; gap:4px; padding:4px 8px; overflow-x:auto;
+  border-bottom:1px solid var(--border); flex-shrink:0; align-items:center;
+}
+.group-filter-btn {
+  padding:2px 10px; border:1px solid var(--border); border-radius:10px;
+  background:transparent; color:var(--text-muted); cursor:pointer;
+  font-size:11px; white-space:nowrap; transition:all .15s;
+}
+.group-filter-btn:hover { border-color:var(--accent); color:var(--accent); }
+.group-filter-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+
+/* Group list in modal */
+.group-item {
+  display:flex; align-items:center; gap:8px; padding:6px 10px;
+  background:var(--bg-input); border:1px solid var(--border); border-radius:4px;
+}
+.group-item-name { flex:1; font-size:12px; font-weight:500; }
+.group-item-count { font-size:11px; color:var(--text-muted); }
+.group-item button {
+  font-size:11px; padding:2px 8px; background:transparent;
+  border:1px solid var(--border); border-radius:3px; color:var(--text-secondary); cursor:pointer;
+}
+.group-item button:hover { border-color:var(--accent); color:var(--accent); }
+.group-item .group-del:hover { border-color:var(--danger); color:var(--danger); }
+.wl-actions { display:flex; gap:4px; }
+.add-btn {
+  padding:4px 10px; border:none; border-radius:4px;
+  background:var(--accent); color:#fff; cursor:pointer;
+  font-size:11px; transition:opacity .15s;
+}
+.add-btn:hover { opacity:0.85; }
+.add-btn.secondary {
+  background:transparent; border:1px solid var(--border);
+  color:var(--text-secondary);
+}
+.add-btn.secondary:hover { border-color:var(--accent); color:var(--accent); }
+.watchlist-table { flex:1; overflow-y:auto; }
+.wl-row {
+  display:grid; grid-template-columns:70px 1fr 72px 62px 80px;
+  padding:7px 10px; border-bottom:1px solid var(--border);
+  align-items:center; cursor:pointer; transition:background .1s; font-size:11px;
+}
+.wl-row:hover { background:var(--bg-hover); }
+.wl-row .wl-code { color:var(--accent); font-weight:500; }
+.wl-row .wl-name { color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.wl-row .wl-price { text-align:right; font-weight:600; }
+.wl-row .wl-change { text-align:right; }
+.wl-row .wl-del {
+  text-align:center; color:var(--text-muted); cursor:pointer;
+  font-size:14px; border:none; background:none;
+}
+.wl-row .wl-del:hover { color:var(--danger); }
+
+/* === Portfolio === */
+.portfolio-actions-bar {
+  display:flex; gap:4px; padding:6px 12px;
+  border-bottom:1px solid var(--border); flex-shrink:0;
+}
+.portfolio-summary {
+  display:flex; gap:12px; font-size:12px; flex:1; justify-content:flex-end;
+}
+.summary-item { display:flex; flex-direction:column; align-items:flex-end; }
+.summary-label { color:var(--text-muted); font-size:10px; }
+.summary-value { font-weight:600; font-size:13px; }
+.portfolio-view-toggle {
+  display:flex; gap:4px; padding:5px 12px;
+  border-bottom:1px solid var(--border); flex-shrink:0;
+}
+.toggle-btn {
+  padding:3px 10px; border:1px solid var(--border); border-radius:4px;
+  background:transparent; color:var(--text-secondary);
+  cursor:pointer; font-size:11px;
+}
+.toggle-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+.portfolio-list { flex:1; overflow-y:auto; }
+.pos-card {
+  padding:8px 12px; border-bottom:1px solid var(--border);
+  cursor:pointer; transition:background .1s;
+}
+.pos-card:hover { background:var(--bg-hover); }
+.pos-card-top { display:flex; justify-content:space-between; align-items:center; }
+.pos-card-name { font-weight:600; }
+.pos-card-code { color:var(--accent); font-size:11px; margin-left:6px; }
+.pos-card-pnl { font-weight:700; }
+.pos-card-bottom {
+  display:flex; gap:14px; margin-top:3px; font-size:11px; color:var(--text-secondary);
+}
+.pos-card-actions { display:flex; gap:5px; margin-top:5px; }
+.pos-card-actions button {
+  padding:2px 7px; border:1px solid var(--border); border-radius:3px;
+  background:transparent; color:var(--text-secondary); cursor:pointer; font-size:10px;
+}
+.pos-card-actions button:hover { border-color:var(--accent); color:var(--accent); }
+.pos-card-actions .del-pos:hover { border-color:var(--danger); color:var(--danger); }
+.pos-trades { padding:4px 12px 8px 20px; font-size:11px; }
+.pos-trade-row {
+  display:flex; gap:10px; padding:3px 0;
+  color:var(--text-secondary); border-bottom:1px dashed var(--border);
+}
+.trade-buy { color:var(--up); }
+.trade-sell { color:var(--down); }
+
+/* === Modals === */
+.modal-overlay {
+  position:fixed; top:0; left:0; right:0; bottom:0;
+  background:var(--modal-bg); z-index:500;
+  display:flex; align-items:center; justify-content:center;
+}
+.modal {
+  background:var(--bg-secondary); border-radius:8px;
+  width:92%; max-width:440px; max-height:85vh;
+  border:1px solid var(--border); overflow:hidden;
+  display:flex; flex-direction:column;
+}
+.modal-header {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:10px 14px; border-bottom:1px solid var(--border);
+}
+.modal-header h3 { font-size:14px; }
+.close-btn {
+  width:24px; height:24px; border:none; background:none;
+  color:var(--text-secondary); cursor:pointer; font-size:18px;
+}
+.close-btn:hover { color:var(--text-primary); }
+.modal-body { padding:12px 14px; overflow-y:auto; }
+.form-group { margin-bottom:10px; }
+.form-group label { display:block; margin-bottom:4px; color:var(--text-secondary); font-size:11px; }
+.form-group input, .form-group select, .form-group textarea {
+  width:100%; padding:6px 8px; border:1px solid var(--border);
+  border-radius:4px; background:var(--bg-input); color:var(--text-primary);
+  font-size:12px; outline:none; font-family:inherit; resize:vertical;
+}
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color:var(--accent); }
+.form-row { display:flex; gap:10px; }
+.form-row .form-group { flex:1; }
+.checkbox-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:4px 8px; max-height:180px; overflow-y:auto; }
+.checkbox-grid label { display:flex; align-items:center; gap:4px; font-size:11px; color:var(--text-primary); cursor:pointer; }
+.checkbox-grid label input { width:auto; margin:0; }
+.checkbox-grid .market-group-label { grid-column:1/-1; font-size:10px; color:var(--text-secondary); margin-top:6px; font-weight:600; }
+.checkbox-grid .market-group-label:first-child { margin-top:0; }
+.hint { font-size:10px; color:var(--text-secondary); margin-top:4px; }
+.pos-stock-label {
+  display:inline-block; margin-top:4px; padding:2px 8px;
+  background:var(--accent); color:#fff; border-radius:3px;
+  font-size:11px;
+}
+.pos-stock-label:empty { display:none; }
+.primary-btn {
+  width:100%; padding:8px; border:none; border-radius:4px;
+  background:var(--accent); color:#fff; font-size:13px;
+  cursor:pointer; font-weight:600; margin-top:4px;
+}
+.primary-btn:hover { opacity:0.9; }
+.primary-btn:disabled { opacity:0.4; cursor:not-allowed; }
+.danger-btn {
+  padding:6px 14px; border:1px solid var(--border); border-radius:4px;
+  background:transparent; color:var(--text-secondary); cursor:pointer;
+  font-size:12px;
+}
+.danger-btn:hover { border-color:var(--accent); color:var(--accent); }
+.settings-actions { display:flex; gap:8px; margin-top:12px; }
+.modal-search-results { position:relative; top:0; }
+
+/* Batch status */
+.batch-status {
+  padding:6px 0; font-size:11px; color:var(--text-secondary);
+  max-height:120px; overflow-y:auto;
+}
+.batch-status .ok { color:var(--down); }
+.batch-status .err { color:var(--danger); }
+
+/* === OCR === */
+.ocr-drop-zone {
+  border:2px dashed var(--border); border-radius:8px;
+  padding:24px; text-align:center; cursor:pointer;
+  color:var(--text-muted); transition:all .2s; outline:none;
+}
+.ocr-drop-zone:hover, .ocr-drop-zone.dragover, .ocr-drop-zone:focus {
+  border-color:var(--accent); color:var(--accent);
+}
+.ocr-drop-zone kbd {
+  display:inline-block; padding:1px 5px; font-size:10px;
+  border:1px solid var(--border-light); border-radius:3px;
+  background:var(--bg-input); color:var(--text-secondary);
+  font-family:monospace;
+}
+.drop-icon { font-size:28px; margin-bottom:6px; }
+.ocr-engine-status {
+  margin-top:6px; font-size:11px; color:var(--text-muted);
+  font-style:italic;
+}
+.ocr-engine-status.err { color:var(--danger); }
+.ocr-status-line {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  margin: 6px 0;
+  background: var(--bg-input);
+  border-left: 3px solid var(--text-muted);
+}
+.ocr-status-line.ok { border-left-color: #4caf50; color: #4caf50; }
+.ocr-status-line.err { border-left-color: var(--danger); color: var(--danger); }
+button.ocr-entry-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.form-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; line-height: 1.5; }
+.ocr-preview { margin:8px 0; text-align:center; }
+.ocr-preview img { max-width:100%; max-height:180px; border-radius:4px; border:1px solid var(--border); }
+.ocr-preview-label { font-size:10px; color:var(--text-muted); margin-top:4px; }
+.ocr-progress { display:flex; align-items:center; gap:8px; padding:8px 0; }
+.ocr-progress #ocrProgressText { font-size:11px; color:var(--text-secondary); min-width:0; flex-shrink:1; }
+.progress-bar {
+  flex:1; height:6px; background:var(--bg-input); border-radius:3px; overflow:hidden;
+}
+.progress-fill {
+  height:100%; background:var(--accent); border-radius:3px;
+  transition:width .3s; width:0%;
+}
+.ocr-results { margin-top:8px; }
+textarea:disabled { opacity:0.5; cursor:not-allowed; }
+
+/* === Scrollbar === */
+::-webkit-scrollbar { width:4px; }
+::-webkit-scrollbar-track { background:var(--bg-primary); }
+::-webkit-scrollbar-thumb { background:var(--border-light); border-radius:2px; }
+::-webkit-scrollbar-thumb:hover { background:var(--text-muted); }
+
+/* Empty state */
+.empty-state {
+  display:flex; flex-direction:column; align-items:center;
+  justify-content:center; padding:40px; color:var(--text-muted);
+}
+.empty-state .icon { font-size:32px; margin-bottom:8px; }
+
+/* ===== 指标切换按钮 ===== */
+.indicator-toggles {
+  display:flex; gap:4px; padding:0 8px;
+}
+.ind-btn {
+  padding:4px 8px; font-size:11px;
+  background:var(--bg-card); color:var(--text-secondary);
+  border:1px solid var(--border); border-radius:4px;
+  cursor:pointer; transition:all .15s;
+  letter-spacing:.5px;
+}
+.ind-btn:hover { background:var(--bg-hover); color:var(--text-primary); }
+.ind-btn.active {
+  background:var(--accent); color:#0f1729;
+  border-color:var(--accent); font-weight:600;
+}
+
+/* ===== 多股行情表格（同花顺风格）===== */
+.stock-summary-table { overflow-x:auto; }
+.stock-summary-table table {
+  width:100%; border-collapse:collapse; font-size:12px;
+}
+.stock-summary-table th {
+  padding:4px 6px; text-align:right; color:var(--text-muted);
+  font-weight:500; font-size:11px; border-bottom:1px solid var(--border);
+  white-space:nowrap; position:sticky; top:0; background:var(--bg-primary); z-index:1;
+}
+.stock-summary-table th:first-child,
+.stock-summary-table td:first-child { text-align:left; }
+.stock-summary-table td {
+  padding:5px 6px; text-align:right; border-bottom:1px solid var(--border);
+  white-space:nowrap; cursor:pointer; transition:background .1s;
+}
+.stock-summary-table tr:hover td { background:var(--bg-hover); }
+.stock-summary-table tr.active td { background:rgba(0,150,255,0.08); }
+.stock-summary-table .stock-col-code { font-family:monospace; font-size:11px; color:var(--text-secondary); }
+.stock-summary-table .stock-col-name { text-align:left; max-width:80px; overflow:hidden; text-overflow:ellipsis; }
+.stock-summary-table .stock-col-spark { padding:2px 4px; }
+.stock-summary-table .stock-col-spark svg { display:block; }
+.stock-summary-table .price-up { color:var(--up); }
+.stock-summary-table .price-down { color:var(--down); }
+.stock-summary-table .stock-loading-row td { color:var(--text-muted); font-style:italic; text-align:center; }
+
+/* ===== 自选股 / 持仓：动作按钮 ===== */
+.wl-actions-cell {
+  display:inline-flex; gap:4px; align-items:center;
+}
+.wl-action, .pos-jump {
+  background:transparent; border:none; cursor:pointer;
+  font-size:14px; padding:2px 4px; border-radius:3px;
+  color:var(--text-muted); transition:all .15s;
+  line-height:1;
+}
+.wl-action:hover, .pos-jump:hover {
+  background:var(--bg-hover); color:var(--accent);
+}
+.wl-del { color:var(--text-muted); }
+.wl-del:hover { color:var(--danger); background:rgba(239,83,80,0.1); }
+
+.danger-btn {
+  padding:8px 16px; background:var(--danger); color:#fff;
+  border:none; border-radius:4px; cursor:pointer; font-size:13px;
+}
+.danger-btn:hover { background:#d32f2f; }
+
+/* ===== 设置：数据源 / token ===== */
+.settings-divider {
+  border:none;
+  border-top:1px dashed var(--border);
+  margin:14px 0 10px;
+}
+.help-link {
+  font-size:11px; color:var(--accent);
+  text-decoration:none; margin-left:4px;
+}
+.help-link:hover { text-decoration:underline; }
+.provider-only input[type="password"] {
+  letter-spacing:1px; font-family:monospace;
+}
+
+/* ===== 大盘指数条 ===== */
+.market-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 6px 10px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  align-items: center;
+  flex-shrink: 0;
+}
+.market-bar-loading {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.market-item {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--bg-input);
+  cursor: default;
+}
+.market-name {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.market-price {
+  font-weight: 600;
+}
+.market-change {
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.market-item.price-up { background: var(--up-bg); }
+.market-item.price-up .market-price,
+.market-item.price-up .market-change { color: var(--up); }
+.market-item.price-down { background: var(--down-bg); }
+.market-item.price-down .market-price,
+.market-item.price-down .market-change { color: var(--down); }
+
+/* ===== 顶栏 AI / 弹窗按钮 ===== */
+#aiBtn, #popoutBtn {
+  font-size: 14px;
+  font-weight: 600;
+}
+#aiBtn { letter-spacing: 0.5px; }
+
+/* ===== AI 按钮（K线图） ===== */
+.ai-btn {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+  color: #fff !important;
+  border-color: transparent !important;
+}
+.ai-btn:hover { opacity: 0.9; }
+
+/* ===== AI 助手 modal ===== */
+.ai-stock-info {
+  padding: 8px 10px;
+  background: var(--bg-input);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+.ai-skills-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ai-skill-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.ai-skill-card:hover { border-color: var(--accent); }
+.ai-skill-card input[type="radio"] { margin-top: 3px; }
+.ai-skill-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+.ai-skill-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.badge {
+  display: inline-block;
+  font-size: 9px;
+  padding: 1px 5px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 8px;
+  margin-left: 4px;
+  font-weight: 500;
+}
+.ai-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.ai-status {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+#aiResultText {
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  line-height: 1.6;
+  resize: vertical;
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
+/* ===== Skills 管理 modal ===== */
+.skills-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.skills-tab-btn {
+  background: none;
+  border: none;
+  padding: 8px 14px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.skills-tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.skills-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.skill-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.skill-card-main { flex: 1; min-width: 0; }
+.skill-card-name {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 3px;
+  color: var(--text-primary);
+}
+.skill-card-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.skill-card-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.skill-card-actions button {
+  font-size: 11px;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+.skills-list-toolbar {
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  background: var(--bg-input);
+  border-left: 3px solid var(--accent);
+  border-radius: 3px;
+}
+.skill-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.badge-license {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: normal;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  margin-left: 4px;
+}
+.skills-edit-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.skills-import-buttons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+}
+.skill-import-status {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 6px;
+}
+.skill-import-status.success { color: #4caf50; }
+.skill-import-status.error { color: var(--danger); }
+#skillImportText {
+  font-family: monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  width: 100%;
+}
+#skillsEditPanel textarea {
+  font-family: monospace;
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+/* ===== LLM 设置测试按钮 ===== */
+.llm-test-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+.llm-test-status {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  line-height: 1.5;
+}
+.llm-test-status.ok { color: #66bb6a; }
+.llm-test-status.warn { color: #ffa726; }
+.llm-test-status.err {
+  color: var(--danger);
+  background: rgba(255, 82, 82, 0.08);
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 82, 82, 0.25);
+}
+.llm-copy-btn { flex-shrink: 0; }
+.secondary-btn {
+  padding: 6px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+  cursor: pointer;
+}
+.secondary-btn:hover { background: var(--bg-hover); }
+
+/* ===== 持仓汇总（含今日/总收益率）===== */
+.portfolio-summary {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  flex-wrap: wrap;
+}
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+.summary-label {
+  color: var(--text-muted);
+  font-size: 10.5px;
+}
+.summary-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.summary-value.price-up { color: var(--up); }
+.summary-value.price-down { color: var(--down); }
+
+/* ===== 主题色选择器 ===== */
+.accent-color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.accent-color-input {
+  width: 32px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+  background: transparent;
+}
+.accent-color-input::-webkit-color-swatch-wrapper { padding: 1px; }
+.accent-color-input::-webkit-color-swatch { border: none; border-radius: 2px; }
+.accent-color-label {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* ===== 排序工具栏 ===== */
+.sort-bar {
+  display: flex;
+  gap: 4px;
+  padding: 4px 0;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+.sort-btn {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.sort-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.sort-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.08);
+}
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: var(--accent); }
