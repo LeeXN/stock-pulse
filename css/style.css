@@ -852,3 +852,5 @@ textarea:disabled { opacity:0.5; cursor:not-allowed; }
 }
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--accent); }
+
+

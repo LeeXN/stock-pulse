@@ -71,5 +71,5 @@ const DB = {
     if (data.currentStock) await this.set('currentStock', data.currentStock);
     if (data.userSkills) await this.set('userSkills', data.userSkills);
     if (data.stockGroups) await this.set('stockGroups', data.stockGroups);
-  }
+  },
 };

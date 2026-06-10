@@ -1,9 +1,16 @@
 {
   "manifest_version": 3,
   "name": "Stock Pulse - K线行情助手",
+  "short_name": "Stock Pulse",
   "version": "1.0.0",
   "description": "轻量级股票K线图查看器，支持A股/港股实时行情、多周期K线、持仓管理、AI 智能分析（财报/技术面/风险评估）",
-  "permissions": ["storage", "alarms", "sidePanel", "contextMenus", "tabs"],
+  "minimum_chrome_version": "114",
+  "permissions": [
+    "storage",
+    "alarms",
+    "sidePanel",
+    "contextMenus"
+  ],
   "host_permissions": [
     "https://qt.gtimg.cn/*",
     "https://push2his.eastmoney.com/*",
@@ -16,9 +23,7 @@
     "https://api.moonshot.cn/*",
     "https://openrouter.ai/*",
     "https://generativelanguage.googleapis.com/*",
-    "https://integrate.api.nvidia.com/*",
     "https://searchapi.eastmoney.com/*",
-    "https://web.ifzq.gtimg.cn/*",
     "https://api.tushare.pro/*",
     "https://hq.sinajs.cn/*",
     "https://quotes.sina.cn/*",

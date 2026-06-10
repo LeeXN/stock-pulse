@@ -10,7 +10,7 @@ const ChartManager = {
   bollSeries: {},
   macdSeries: {},
   kdjSeries: {},
-  alertLines: [],
+
   overlayChart: null,
   overlaySeries: {},
   _container: null,
@@ -119,7 +119,7 @@ const ChartManager = {
    * 渲染K线数据
    * @param {Array} klineData
    * @param {Array} trades - 买卖点
-   * @param {Object} [options] - { boll, macd, kdj, alertLines }
+   * @param {Object} [options] - { boll, macd, kdj }
    */
   renderKline(klineData, trades = [], options = {}) {
     if (!this.chart) return;
@@ -169,11 +169,6 @@ const ChartManager = {
 
     // 重新布局
     this._applyLayout();
-
-    // 预警线
-    if (Array.isArray(options.alertLines)) {
-      this._renderAlertLines(options.alertLines);
-    }
 
     // Trade markers
     if (trades.length > 0) this._renderTradeMarkers(trades);
@@ -330,7 +325,6 @@ const ChartManager = {
     this._removeSeriesGroup('boll');
     this._removeSeriesGroup('macd');
     this._removeSeriesGroup('kdj');
-    this._removeAlertLines();
     this.volumeSeries.setData([]);
   },
 
@@ -578,31 +572,6 @@ const ChartManager = {
     mkLine('k', k, '#f0b90b');
     mkLine('d', d, '#4fc3f7');
     mkLine('j', j, '#e040fb');
-  },
-
-  // ===== 预警价格线 =====
-  _renderAlertLines(lines) {
-    this._removeAlertLines();
-    if (!this.candleSeries || !Array.isArray(lines)) return;
-    for (const ln of lines) {
-      const s = this.candleSeries.createPriceLine({
-        price: ln.price,
-        color: ln.color || '#ffa726',
-        lineWidth: 1,
-        lineStyle: LightweightCharts.LineStyle.Dashed,
-        axisLabelVisible: true,
-        title: ln.title || '预警'
-      });
-      this.alertLines.push(s);
-    }
-  },
-
-  _removeAlertLines() {
-    if (!this.candleSeries) { this.alertLines = []; return; }
-    for (const ln of this.alertLines) {
-      try { this.candleSeries.removePriceLine(ln); } catch {}
-    }
-    this.alertLines = [];
   },
 
   // ===== 叠加 K 线（归一化多股对比） =====

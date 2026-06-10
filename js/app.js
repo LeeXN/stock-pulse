@@ -143,7 +143,7 @@
     setInterval(updateMarketTime, 1000);
     // 大盘指数 10s 刷新
     refreshMarketBar();
-    state.marketTimer = setInterval(refreshMarketBar, 10 * 1000);
+    setInterval(refreshMarketBar, 10000);
   }
 
   // ===== Tab Switching =====
@@ -495,7 +495,6 @@
             boll: state.indicators.boll,
             macd: state.indicators.macd,
             kdj: state.indicators.kdj,
-            alertLines: []
           });
         }
       } catch (err) {
@@ -1590,10 +1589,6 @@
     chrome.runtime.sendMessage({ type: 'sp:open-eastmoney', stock });
   }
 
-  // ===== 预警模态框 =====
-
-
-
   // ===== Group Management =====
   async function addGroup(name) {
     if (!name.trim()) return;
@@ -2222,6 +2217,7 @@
     ocrModal.addEventListener('paste', handleClipboardPaste);
 
     document.getElementById('ocrSubmitBtn').addEventListener('click', handleOCRSubmit);
+
   }
 
   /**

@@ -129,7 +129,7 @@ function openPanelWindow() {
 /**
  * 监听来自 panel 的消息
  */
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || !msg.type) return;
 
   if (msg.type === 'sp:open-eastmoney') {
@@ -211,21 +211,18 @@ async function fetchQuotes(fullCodes) {
   }
 }
 
-/**
- * 定时检查预警
- */
-/**
- * 更新浏览器角标：红色 = 涨的股数，绿色 = 跌的股数
+  /**
+   * 更新浏览器角标：红色 = 涨的股数，绿色 = 跌的股数
  */
 async function updateBadge() {
   try {
     const { watchlist = [], portfolio = [] } = await chrome.storage.local.get(['watchlist', 'portfolio']);
     const all = [...watchlist, ...portfolio];
-    if (!all.length) {
+    const codes = [...new Set(all.map(s => s.fullCode))];
+    if (!codes.length) {
       chrome.action.setBadgeText({ text: '' });
       return;
     }
-    const codes = [...new Set(all.map(s => s.fullCode))];
     const quotes = await fetchQuotes(codes);
     let up = 0, down = 0;
     for (const s of all) {
