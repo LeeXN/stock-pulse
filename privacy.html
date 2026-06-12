@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stock Pulse Privacy Policy / 隐私权政策</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      line-height: 1.8;
+      color: #333;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 24px;
+    }
+    h1 { font-size: 1.8em; margin-bottom: 0.5em; color: #1a1a1a; }
+    h2 { font-size: 1.4em; margin: 2em 0 0.8em; color: #333; border-bottom: 2px solid #4fc3f7; padding-bottom: 0.3em; }
+    h3 { font-size: 1.1em; margin: 1.5em 0 0.5em; color: #555; }
+    p { margin-bottom: 1em; }
+    ul { margin: 0.8em 0 1em 1.5em; }
+    li { margin-bottom: 0.4em; }
+    .lang-section { margin-bottom: 3em; }
+    .lang-section.zh { border-left: 4px solid #4fc3f7; padding-left: 20px; }
+    .lang-section.en { border-left: 4px solid #5c6bc0; padding-left: 20px; }
+    .lang-section h1 { margin-bottom: 1em; }
+    .update-info { background: #f5f5f5; padding: 12px 16px; border-radius: 6px; margin-bottom: 2em; font-size: 0.9em; color: #666; }
+    .lang-divider { text-align: center; font-size: 0.85em; color: #999; margin: 3em 0; letter-spacing: 2px; }
+  </style>
+</head>
+<body>
+
+<div class="lang-section zh">
+  <h1>隐私权政策 — Stock Pulse K线行情助手</h1>
+  <p class="update-info">最后更新 / Last updated：2026年6月12日</p>
+
+  <p>Stock Pulse（"我们"）非常重视您的隐私保护。本隐私权政策旨在说明 Stock Pulse 浏览器插件如何处理用户数据。请在使用前仔细阅读。</p>
+
+  <h2>一、数据收集与处理（本地）</h2>
+  <p>Stock Pulse 是一款本地优先的数据查看工具，<strong>不会主动上传、收集或传输任何个人身份信息</strong>。</p>
+  <p>以下数据仅存储在您的本地设备（Chrome 浏览器存储）中：</p>
+
+  <h3>1.1 用户设置数据</h3>
+  <ul>
+    <li><strong>行情数据源偏好</strong>（如腾讯/东方财富/新浪等）</li>
+    <li><strong>K线周期与显示数量</strong>（如日线/周线、显示120根K线）</li>
+    <li><strong>主题与界面配色</strong></li>
+    <li><strong>刷新间隔</strong>（分钟）</li>
+    <li><strong>自选股列表</strong>（股票代码、名称、市场、自选分组）</li>
+    <li><strong>持仓数据</strong>（股票代码、买入价、持仓数量、备注）</li>
+    <li><strong>股票分组</strong>（自定义分组名称和成员）</li>
+    <li><strong>行情指数选择</strong>（如上证指数、深证成指等）</li>
+  </ul>
+
+  <h3>1.2 用户可选配置的第三方 API 密钥（仅在您主动填写时存储）</h3>
+  <ul>
+    <li><strong>LLM（大模型）API Key</strong>：用于AI分析功能，支持 OpenAI / DeepSeek / 阿里通义 / Moonshot / OpenRouter / Google Gemini 等</li>
+    <li><strong>LLM Base URL 与模型名称</strong>：用户自选的模型接入点配置</li>
+    <li><strong>CORS 代理地址</strong>：用户自建代理配置，用于转发 LLM 请求</li>
+    <li><strong>Tushare Pro Token</strong>：专业金融数据接口凭证</li>
+    <li><strong>聚合数据 Key</strong>：Juhe API 凭证</li>
+  </ul>
+  <p>上述密钥由用户自愿提供，存储于浏览器本地存储中，我们不会获取、访问或传输这些密钥内容。</p>
+
+  <h2>二、数据收集与处理（网络请求）</h2>
+
+  <h3>2.1 实时行情数据</h3>
+  <p>为向您提供股票行情功能，插件会在您使用时向后述公开金融数据源发起请求（仅在您主动操作时触发，不含任何个人身份信息）：</p>
+  <ul>
+    <li><strong>腾讯行情</strong>：qt.gtimg.cn（A股/港股实时报价）</li>
+    <li><strong>东方财富</strong>：push2.eastmoney.com、push2his.eastmoney.com、searchapi.eastmoney.com、datacenter.eastmoney.com、np-anotice-stock.eastmoney.com（行情、K线、财务、公告数据）</li>
+    <li><strong>新浪财经</strong>：hq.sinajs.cn、quotes.sina.cn、stock.finance.sina.com.cn（行情数据）</li>
+    <li><strong>聚合数据</strong>：web.juhe.cn（附加数据服务）</li>
+    <li><strong>Tushare Pro</strong>：api.tushare.pro（专业金融数据，需用户自备Token）</li>
+  </ul>
+
+  <h3>2.2 AI 分析功能（LLM 调用）</h3>
+  <p>当您使用 AI 分析功能（如财报解读、技术面分析、风险评估）时：</p>
+  <ul>
+    <li>插件会将您的<strong>投资相关问题</strong>（不含账户信息）发送至您配置的 LLM 提供商</li>
+    <li>支持通过用户自备的 <strong>CORS 代理</strong>转发请求</li>
+    <li>支持的 LLM 提供商：OpenAI、DeepSeek、阿里云通义千问、Moonshot AI（月之暗面）、OpenRouter、Google Gemini</li>
+    <li>您的请求内容仅用于生成回复，不用于模型训练</li>
+  </ul>
+
+  <h2>三、权限使用说明</h2>
+  <p>以下是插件申请的 Chrome 扩展权限及其用途：</p>
+  <ul>
+    <li><strong>storage</strong>：存储用户自选股、持仓、设置等本地数据</li>
+    <li><strong>alarms</strong>：定时任务（定时刷新行情角标、保活服务）</li>
+    <li><strong>sidePanel</strong>：在浏览器侧边栏展示行情面板</li>
+    <li><strong>contextMenus</strong>：右键菜单功能（选中股票代码时显示"加入Stock Pulse自选股"和"在东方财富查看"）</li>
+    <li><strong>host_permissions</strong>：访问上述金融数据源和 LLM API 端点的权限，仅在您主动操作时触发</li>
+  </ul>
+
+  <h2>四、数据共享</h2>
+  <p>我们<strong>不会</strong>主动向任何第三方共享、出售或传输您的个人数据或设置数据。您在本插件中配置的 API 密钥仅存储于本地，不会被发送至我们运营者控制的任何服务器。</p>
+  <p>插件中指向外部金融数据源和 LLM 提供商的所有请求，均为您与相应服务提供商之间的直接交互，受各提供商的隐私政策约束。</p>
+
+  <h2>五、数据安全</h2>
+  <p>所有本地存储数据受 Chrome 浏览器的安全机制保护。我们建议您：</p>
+  <ul>
+    <li>不要在不安全的设备上保存敏感的 API 密钥</li>
+    <li>定期清理不再使用的插件数据</li>
+  </ul>
+
+  <h2>六、用户权利</h2>
+  <p>您可以随时通过以下方式管理或删除您的数据：</p>
+  <ul>
+    <li><strong>导出数据</strong>：插件内置"导出数据"功能，可将所有本地数据导出为 JSON 文件</li>
+    <li><strong>删除数据</strong>：在插件设置中清除数据，或通过 Chrome 扩展管理页面卸载插件（会清除该插件的所有本地存储）</li>
+    <li><strong>重置设置</strong>：可在设置中恢复默认配置</li>
+  </ul>
+
+  <h2>七、未成年人</h2>
+  <p>本插件面向成年投资者设计。我们无意收集未成年人信息。若您认为我们已收集了未成年人的信息，请联系我们予以删除。</p>
+
+  <h2>八、政策更新</h2>
+  <p>如我们对本政策进行重大变更，将通过插件更新或本页公告形式通知您。变更后继续使用插件即表示您接受更新后的政策。</p>
+
+  <h2>九、联系我们</h2>
+  <p>如您对本隐私权政策有任何疑问，请通过 GitHub Issues 或插件商店评论联系我们。</p>
+  <p>插件作者：LeeXN</p>
+</div>
+
+<div class="lang-divider">— ENGLISH VERSION —</div>
+
+<div class="lang-section en">
+  <h1>Privacy Policy — Stock Pulse K-Line Market Assistant</h1>
+  <p class="update-info">Last updated: June 12, 2026</p>
+
+  <p>Stock Pulse ("we", "us", or "our") is committed to protecting your privacy. This Privacy Policy explains how the Stock Pulse browser extension handles user data. Please read it carefully before using the extension.</p>
+
+  <h2>1. Data Collection and Processing (Local)</h2>
+  <p>Stock Pulse is a local-first market data viewer. <strong>We do not proactively collect, upload, or transmit any personally identifiable information (PII).</strong></p>
+  <p>The following data is stored exclusively on your local device (Chrome browser storage):</p>
+
+  <h3>1.1 User Settings</h3>
+  <ul>
+    <li><strong>Market data source preferences</strong> (Tencent / East Money / Sina, etc.)</li>
+    <li><strong>K-line period and display count</strong> (daily / weekly, up to 120 candles)</li>
+    <li><strong>Theme and UI color scheme</strong></li>
+    <li><strong>Refresh interval</strong> (in minutes)</li>
+    <li><strong>Watchlist</strong> (stock code, name, market, custom groups)</li>
+    <li><strong>Portfolio holdings</strong> (stock code, purchase price, quantity, notes)</li>
+    <li><strong>Stock groups</strong> (custom group names and members)</li>
+    <li><strong>Market index selection</strong> (e.g., SSE Composite, SZSE Component)</li>
+  </ul>
+
+  <h3>1.2 Third-Party API Keys (only stored when you voluntarily provide them)</h3>
+  <ul>
+    <li><strong>LLM (Large Language Model) API Key</strong>: for AI analysis features, supporting OpenAI / DeepSeek / Alibaba Tongyi / Moonshot / OpenRouter / Google Gemini</li>
+    <li><strong>LLM Base URL and model name</strong>: your chosen model endpoint configuration</li>
+    <li><strong>CORS proxy address</strong>: your self-hosted proxy for forwarding LLM requests</li>
+    <li><strong>Tushare Pro Token</strong>: professional financial data API credential</li>
+    <li><strong>Juhe API Key</strong>: Juhe data service credential</li>
+  </ul>
+  <p>These keys are provided voluntarily by you and stored in the browser's local storage. We do not have access to, or control over, these credentials.</p>
+
+  <h2>2. Data Collection and Processing (Network Requests)</h2>
+
+  <h3>2.1 Real-Time Market Data</h3>
+  <p>To provide stock market data, the extension makes requests to the following public financial data sources when you actively use the relevant features (no personal information is included):</p>
+  <ul>
+    <li><strong>Tencent Finance</strong>: qt.gtimg.cn (A-share / HK-stock real-time quotes)</li>
+    <li><strong>East Money</strong>: push2.eastmoney.com, push2his.eastmoney.com, searchapi.eastmoney.com, datacenter.eastmoney.com, np-anotice-stock.eastmoney.com (quotes, K-lines, financials, announcements)</li>
+    <li><strong>Sina Finance</strong>: hq.sinajs.cn, quotes.sina.cn, stock.finance.sina.com.cn (market data)</li>
+    <li><strong>Juhe Data</strong>: web.juhe.cn (supplementary data services)</li>
+    <li><strong>Tushare Pro</strong>: api.tushare.pro (professional financial data, requires user-provided token)</li>
+  </ul>
+
+  <h3>2.2 AI Analysis Features (LLM Calls)</h3>
+  <p>When you use AI analysis features (such as earnings report interpretation, technical analysis, or risk assessment):</p>
+  <ul>
+    <li>The extension sends your <strong>investment-related questions</strong> (without any account information) to the LLM provider you configure</li>
+    <li>Requests may be forwarded through a <strong>user-provided CORS proxy</strong></li>
+    <li>Supported LLM providers: OpenAI, DeepSeek, Alibaba Tongyi Qianwen, Moonshot AI, OpenRouter, Google Gemini</li>
+    <li>Your request content is used solely for generating responses and is not used for model training</li>
+  </ul>
+
+  <h2>3. Permission Usage</h2>
+  <p>The following Chrome extension permissions are requested and their purposes:</p>
+  <ul>
+    <li><strong>storage</strong>: storing watchlist, portfolio, and settings locally</li>
+    <li><strong>alarms</strong>: scheduled tasks (periodic badge refresh, service keep-alive)</li>
+    <li><strong>sidePanel</strong>: displaying the market panel in the browser's side panel</li>
+    <li><strong>contextMenus</strong>: right-click menu items ("Add to Stock Pulse Watchlist" and "View on East Money" when selecting stock codes)</li>
+    <li><strong>host_permissions</strong>: permission to access the financial data sources and LLM API endpoints listed above — requests are only made when you actively use features that require them</li>
+  </ul>
+
+  <h2>4. Data Sharing</h2>
+  <p>We do <strong>not</strong> share, sell, or transfer your personal data or settings to any third party. API keys configured within the extension are stored locally and are never sent to any server controlled by the extension developers.</p>
+  <p>All requests to external financial data sources and LLM providers are direct interactions between you and the respective service providers, governed by their own privacy policies.</p>
+
+  <h2>5. Data Security</h2>
+  <p>All local storage is protected by Chrome's security mechanisms. We recommend that you:</p>
+  <ul>
+    <li>Avoid saving sensitive API keys on unsecured devices</li>
+    <li>Regularly clean up data from extensions you no longer use</li>
+  </ul>
+
+  <h2>6. Your Rights</h2>
+  <p>You can manage or delete your data at any time:</p>
+  <ul>
+    <li><strong>Export data</strong>: the extension has a built-in "Export Data" feature to export all local data as a JSON file</li>
+    <li><strong>Delete data</strong>: clear data in the extension settings, or uninstall the extension via Chrome's extension management page (this removes all local storage for the extension)</li>
+    <li><strong>Reset settings</strong>: restore default configuration in settings</li>
+  </ul>
+
+  <h2>7. Children</h2>
+  <p>This extension is designed for adult investors. We do not knowingly collect information from minors. If you believe we have collected information from a minor, please contact us for removal.</p>
+
+  <h2>8. Policy Changes</h2>
+  <p>If we make material changes to this policy, we will notify you through extension updates or by posting a notice on this page. Your continued use of the extension after changes constitutes acceptance of the updated policy.</p>
+
+  <h2>9. Contact Us</h2>
+  <p>If you have any questions about this Privacy Policy, please contact us via GitHub Issues or the Chrome Web Store review section.</p>
+  <p>Extension author: LeeXN</p>
+</div>
+
+</body>
+</html>
