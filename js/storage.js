@@ -12,8 +12,14 @@ const DB = {
         });
       });
     }
-    const val = localStorage.getItem('sp_' + key);
-    return val !== null ? JSON.parse(val) : defaultVal;
+    const raw = localStorage.getItem('sp_' + key);
+    if (raw === null) return defaultVal;
+    try {
+      return JSON.parse(raw);
+    } catch (e) {
+      console.warn('[DB] parse failed for', key, e);
+      return defaultVal;
+    }
   },
 
   async set(key, value) {

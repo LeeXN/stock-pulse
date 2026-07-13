@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Stock Pulse - K线行情助手",
   "short_name": "Stock Pulse",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "轻量级股票K线图查看器，支持A股/港股实时行情、多周期K线、持仓管理、AI 智能分析（财报/技术面/风险评估）",
   "minimum_chrome_version": "114",
   "permissions": [
@@ -28,7 +28,9 @@
     "https://hq.sinajs.cn/*",
     "https://quotes.sina.cn/*",
     "https://stock.finance.sina.com.cn/*",
-    "https://web.juhe.cn/*"
+    "https://web.juhe.cn/*",
+    "https://api.binance.com/*",
+    "https://api.dexscreener.com/*"
   ],
   "action": {
     "default_title": "Stock Pulse",
