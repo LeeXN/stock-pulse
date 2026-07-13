@@ -512,8 +512,9 @@ textarea:disabled { opacity:0.5; cursor:not-allowed; }
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
   font-size: 11px;
-  align-items: center;
+  align-items: flex-start;
   flex-shrink: 0;
+  min-height: 0;
 }
 .market-bar-loading {
   color: var(--text-muted);

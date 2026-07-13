@@ -94,10 +94,10 @@ async function addToWatchlistViaMessage(stock) {
   try {
     const resp = await fetch(TC_BASE + tcCode);
     const text = await resp.text();
-    const match = text.match(/v_[a-z]{2}\d+="(.+)"/);
+    const match = text.match(/v_([a-z]{2})([A-Za-z0-9]+)="(.+)"/);
     let name = stock.code;
     if (match) {
-      const parts = match[1].split('~');
+      const parts = match[3].split('~');
       if (parts[1]) name = parts[1];
     }
     const stockWithName = { ...stock, name };
@@ -108,11 +108,19 @@ async function addToWatchlistViaMessage(stock) {
 }
 
 function openEastmoney(stock) {
+  if (!stock || !stock.code) return;
+  const market = (stock.market || '').toUpperCase();
   let url;
-  if (stock.market === 'HK') {
+  if (market === 'HK') {
     url = `https://quote.eastmoney.com/hk/${stock.code}.html`;
+  } else if (market === 'US') {
+    url = `https://quote.eastmoney.com/us/${stock.code}.html`;
+  } else if (market === 'JP') {
+    url = `https://quote.eastmoney.com/jp/${stock.code}.html`;
+  } else if (market === 'KR') {
+    url = `https://quote.eastmoney.com/kr/${stock.code}.html`;
   } else {
-    const prefix = stock.market === 'SH' ? '1' : '0';
+    const prefix = market === 'SH' ? '1' : '0';
     url = `https://quote.eastmoney.com/${prefix === '1' ? 'sh' : 'sz'}${stock.code}.html`;
   }
   chrome.tabs.create({ url });
@@ -155,6 +163,17 @@ function openPanelWindow() {
       .then(data => sendResponse({ data }))
       .catch(e => sendResponse({ error: e.message || String(e) }));
     return true;
+  } else if (msg.type === 'sp:fetch-ulist') {
+    // 专门用于获取 JP/KR 等 stock/get 不支持的行情（用 ulist.np/get 批量接口）
+    const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?secids=${msg.secids}&fields=${msg.fields || 'f2,f3,f4,f14,f15,f16,f17'}`;
+    fetch(url, { signal: AbortSignal.timeout(15000), headers: { 'Referer': 'https://quote.eastmoney.com/' } })
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
+        return r.json();
+      })
+      .then(data => sendResponse({ data }))
+      .catch(e => sendResponse({ error: e.message || String(e) }));
+    return true;
   }
 });
 
@@ -175,7 +194,7 @@ async function fetchQuotes(fullCodes) {
     try { text = new TextDecoder('gbk').decode(buf); } catch (_) { text = new TextDecoder('utf-8').decode(buf); }
     const results = {};
     for (const line of text.split(';')) {
-      const m = line.match(/v_([a-z]{2})(\d+)="(.+)"/);
+      const m = line.match(/v_([a-z]{2})([A-Za-z0-9]+)="(.+)"/);
       if (!m) continue;
       const [, prefix, code, dataStr] = m;
       const p = dataStr.split('~');
@@ -183,26 +202,18 @@ async function fetchQuotes(fullCodes) {
       let market = 'SZ';
       if (prefix === 'sh') market = 'SH';
       else if (prefix === 'hk') market = 'HK';
+      else if (prefix === 'us') market = 'US';
+      else if (prefix === 'jp') market = 'JP';
+      else if (prefix === 'kr') market = 'KR';
       const fullCode = `${market}:${code}`;
-      if (prefix === 'hk') {
-        results[fullCode] = {
-          fullCode, code, market,
-          name: p[1],
-          price: parseFloat(p[3]) || 0,
-          prevClose: parseFloat(p[4]) || 0,
-          change: parseFloat(p[31]) || 0,
-          changePercent: parseFloat(p[32]) || 0
-        };
-      } else {
-        results[fullCode] = {
-          fullCode, code, market,
-          name: p[1],
-          price: parseFloat(p[3]) || 0,
-          prevClose: parseFloat(p[4]) || 0,
-          change: parseFloat(p[31]) || 0,
-          changePercent: parseFloat(p[32]) || 0
-        };
-      }
+      results[fullCode] = {
+        fullCode, code, market,
+        name: p[1],
+        price: parseFloat(p[3]) || 0,
+        prevClose: parseFloat(p[4]) || 0,
+        change: parseFloat(p[31]) || 0,
+        changePercent: parseFloat(p[32]) || 0
+      };
     }
     return results;
   } catch (e) {
