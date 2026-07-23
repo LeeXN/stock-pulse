@@ -27,7 +27,8 @@
       llmProvider: 'openai', llmBaseUrl: 'https://api.openai.com/v1',
       llmApiKey: '', llmModel: 'gpt-4o-mini', llmVisionModel: 'gpt-4o-mini',
       llmMaxTokens: 4096,
-      corsProxy: ''
+      corsProxy: '',
+      portfolioBaseCurrency: 'CNY'
     },
     indicators: { boll: false, macd: false, kdj: false },
     refreshTimer: null,
@@ -124,6 +125,21 @@
     return String(num);
   }
 
+  function formatAmountByCurrency(value, currency, digits = 0, fallback = '--') {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return fallback;
+    const ccy = String(currency || '').toUpperCase();
+    return ccy ? `${num.toFixed(digits)} ${ccy}` : num.toFixed(digits);
+  }
+
+  function formatSignedAmountByCurrency(value, currency, digits = 0, fallback = '--') {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return fallback;
+    if (num > 0) return `+${formatAmountByCurrency(num, currency, digits, fallback)}`;
+    if (num < 0) return `-${formatAmountByCurrency(Math.abs(num), currency, digits, fallback)}`;
+    return formatAmountByCurrency(0, currency, digits, fallback);
+  }
+
   function toggleSort(page, key) {
     const s = state.sort[page];
     if (s.key === key) {
@@ -141,6 +157,29 @@
     state.portfolio = stored.portfolio || [];
     state.stockGroups = stored.stockGroups || [];
     state.settings = { ...state.settings, ...stored.settings };
+    const changedSettings = {};
+    if (typeof MarketAPI !== 'undefined') {
+      const rawMarketIndices = state.settings.marketIndices || MarketAPI.DEFAULT_SELECTED;
+      const normalizedMarketIndices = MarketAPI.normalizeSecids(rawMarketIndices);
+      const oldStr = JSON.stringify(rawMarketIndices);
+      const newStr = JSON.stringify(normalizedMarketIndices);
+      if (oldStr !== newStr) {
+        state.settings.marketIndices = normalizedMarketIndices;
+        changedSettings.marketIndices = normalizedMarketIndices;
+      }
+    }
+    const allowedBaseCurrencies = new Set(['CNY', 'HKD', 'USD']);
+    const baseCurrency = String(state.settings.portfolioBaseCurrency || 'CNY').toUpperCase();
+    if (!allowedBaseCurrencies.has(baseCurrency)) {
+      state.settings.portfolioBaseCurrency = 'CNY';
+      changedSettings.portfolioBaseCurrency = 'CNY';
+    } else if (state.settings.portfolioBaseCurrency !== baseCurrency) {
+      state.settings.portfolioBaseCurrency = baseCurrency;
+      changedSettings.portfolioBaseCurrency = baseCurrency;
+    }
+    if (Object.keys(changedSettings).length > 0) {
+      await DB.set('settings', state.settings);
+    }
     if (stored.settings && stored.settings.indicators) {
       state.indicators = { ...state.indicators, ...stored.settings.indicators };
     }
@@ -879,7 +918,7 @@
         empty.appendChild(icon);
         empty.appendChild(text);
         list.appendChild(empty);
-        renderPortfolioSummary([]);
+        await renderPortfolioSummary([]);
         return;
       }
 
@@ -923,7 +962,7 @@
       if (q.name && q.name !== pos.name) { pos.name = q.name; }
       const currentPrice = q.price || 0;
       const calc = Portfolio.calcPosition(pos, currentPrice);
-      summaryData.push({ ...calc, name: pos.name });
+      summaryData.push({ ...calc, name: pos.name, market: pos.market, fullCode: pos.fullCode });
       const color = Portfolio.getColor(pos.colorIndex || 0);
       const pnlCls = calc.pnl >= 0 ? 'price-up' : 'price-down';
       const card = document.createElement('div');
@@ -949,11 +988,12 @@
 
       const bottom = document.createElement('div');
       bottom.className = 'pos-card-bottom';
+      const positionCurrency = CurrencyFX.getCurrencyByMarket(pos.market);
       const fields = [
         ['持仓', calc.holdingQty],
         ['均价', calc.avgCost.toFixed(2)],
         ['现价', currentPrice > 0 ? formatPrice(currentPrice, pos.market) : '--'],
-        ['市值', calc.marketValue.toFixed(0)]
+        ['市值', formatAmountByCurrency(calc.marketValue, positionCurrency, 0)]
       ];
       for (const [label, value] of fields) {
         const span = document.createElement('span');
@@ -1007,28 +1047,71 @@
       });
       list.appendChild(card);
     }
-    renderPortfolioSummary(summaryData);
+    await renderPortfolioSummary(summaryData);
   }
 
-  function renderPortfolioSummary(data) {
+  async function renderPortfolioSummary(data) {
     const el = document.getElementById('portfolioSummary');
     if (!data.length) { el.innerHTML = ''; return; }
-    const totalValue = data.reduce((s, d) => s + d.marketValue, 0);
-    const totalCost = data.reduce((s, d) => s + d.costValue, 0);
-    const totalPnl = data.reduce((s, d) => s + d.pnl, 0);
+    const baseCurrency = String(state.settings.portfolioBaseCurrency || 'CNY').toUpperCase();
+    let ratesInfo = null;
+    try {
+      ratesInfo = await CurrencyFX.getRates();
+    } catch (e) {
+      console.warn('[Portfolio] fx rates unavailable:', e.message || String(e));
+    }
+
+    const missingPairs = new Set();
+    const convertAmount = (amount, fromCurrency) => {
+      const raw = Number(amount);
+      if (!Number.isFinite(raw)) return null;
+      const from = String(fromCurrency || '').toUpperCase();
+      if (!from) return null;
+      if (from === baseCurrency) return raw;
+      const converted = CurrencyFX.convert(raw, from, baseCurrency, ratesInfo);
+      if (!Number.isFinite(converted)) {
+        missingPairs.add(`${from}->${baseCurrency}`);
+        return null;
+      }
+      return converted;
+    };
+
+    let totalValue = 0;
+    let totalCost = 0;
+    let totalPnl = 0;
+    for (const d of data) {
+      const fromCurrency = CurrencyFX.getCurrencyByMarket(d.market);
+      const v = convertAmount(d.marketValue, fromCurrency);
+      const c = convertAmount(d.costValue, fromCurrency);
+      const p = convertAmount(d.pnl, fromCurrency);
+      if (v !== null) totalValue += v;
+      if (c !== null) totalCost += c;
+      if (p !== null) totalPnl += p;
+    }
+
     // 今日盈亏 = 持仓数 * (现价 - 昨收)
     let todayPnl = 0;
     for (const pos of state.portfolio) {
       const q = state.quotes[pos.fullCode] || {};
-      if (q.price && q.prevClose) todayPnl += (q.price - q.prevClose) * Portfolio.calcPosition(pos, q.price).holdingQty;
+      if (q.price && q.prevClose) {
+        const rawToday = (q.price - q.prevClose) * Portfolio.calcPosition(pos, q.price).holdingQty;
+        const fromCurrency = CurrencyFX.getCurrencyByMarket(pos.market);
+        const convertedToday = convertAmount(rawToday, fromCurrency);
+        if (convertedToday !== null) todayPnl += convertedToday;
+      }
     }
+
     const totalReturnPct = totalCost > 0 ? (totalPnl / totalCost * 100) : 0;
     const cls = totalPnl >= 0 ? 'price-up' : 'price-down';
     const tcls = todayPnl >= 0 ? 'price-up' : 'price-down';
+    const missingNote = missingPairs.size
+      ? `<div class="summary-item"><span class="summary-label">提示</span><span class="summary-value">部分币种未计入汇总（缺少汇率：${[...missingPairs].join(', ')}）</span></div>`
+      : '';
     el.innerHTML = `
-      <div class="summary-item"><span class="summary-label">总市值</span><span class="summary-value">${totalValue.toFixed(0)}</span></div>
-      <div class="summary-item"><span class="summary-label">今日</span><span class="summary-value ${tcls}">${todayPnl >= 0?'+':''}${todayPnl.toFixed(0)}</span></div>
-      <div class="summary-item"><span class="summary-label">总盈亏</span><span class="summary-value ${cls}">${totalPnl >= 0?'+':''}${totalPnl.toFixed(0)} (${totalReturnPct >= 0?'+':''}${totalReturnPct.toFixed(2)}%)</span></div>
+      <div class="summary-item"><span class="summary-label">总市值</span><span class="summary-value">${formatAmountByCurrency(totalValue, baseCurrency, 0)}</span></div>
+      <div class="summary-item"><span class="summary-label">今日</span><span class="summary-value ${tcls}">${formatSignedAmountByCurrency(todayPnl, baseCurrency, 0)}</span></div>
+      <div class="summary-item"><span class="summary-label">总盈亏</span><span class="summary-value ${cls}">${formatSignedAmountByCurrency(totalPnl, baseCurrency, 0)} (${totalReturnPct >= 0?'+':''}${totalReturnPct.toFixed(2)}%)</span></div>
+      ${missingNote}
     `;
   }
 
@@ -1071,7 +1154,7 @@
   function renderMarketIndicesCheckboxes() {
     const container = document.getElementById('marketIndicesCheckboxes');
     if (!container || typeof MarketAPI === 'undefined') return;
-    const selected = new Set(state.settings.marketIndices || MarketAPI.DEFAULT_SELECTED);
+    const selected = new Set(MarketAPI.normalizeSecids(state.settings.marketIndices || MarketAPI.DEFAULT_SELECTED));
     container.innerHTML = '';
     for (const [group, indices] of Object.entries(MarketAPI.MARKETS)) {
       const label = document.createElement('div');
@@ -2244,6 +2327,7 @@
       if (accentInput) accentInput.value = accentVal;
       if (accentLabel) accentLabel.textContent = accentVal;
       document.getElementById('klineCount').value = state.settings.klineCount;
+      document.getElementById('portfolioBaseCurrency').value = state.settings.portfolioBaseCurrency || 'CNY';
       fillProviderDropdowns();
       document.getElementById('quoteProvider').value = state.settings.quoteProvider || 'tencent';
       document.getElementById('klineProvider').value = state.settings.klineProvider || 'eastmoney';
@@ -2312,6 +2396,11 @@
       state.settings.klineCount = parseInt(e.target.value);
       await DB.set('settings', state.settings);
       if (state.currentStock) loadChart();
+    });
+    document.getElementById('portfolioBaseCurrency').addEventListener('change', async (e) => {
+      state.settings.portfolioBaseCurrency = String(e.target.value || 'CNY').toUpperCase();
+      await DB.set('settings', state.settings);
+      if (state.currentTab === 'portfolio') await renderPortfolio();
     });
 
     // 实时报价 / K线 源切换

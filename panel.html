@@ -284,6 +284,15 @@
           </select>
         </div>
         <div class="form-group">
+          <label>持仓汇总计价货币</label>
+          <select id="portfolioBaseCurrency">
+            <option value="CNY">人民币 (CNY)</option>
+            <option value="HKD">港币 (HKD)</option>
+            <option value="USD">美元 (USD)</option>
+          </select>
+          <div class="hint">仅影响总市值/总盈亏/今日汇总展示，不改变买卖记录原币种。</div>
+        </div>
+        <div class="form-group">
           <label>大盘指数显示</label>
           <div id="marketIndicesCheckboxes" class="checkbox-grid"></div>
           <div class="hint">勾选要显示在顶栏的指数，修改后需刷新面板</div>
@@ -519,6 +528,7 @@
   <script src="lib/lightweight-charts.standalone.js"></script>
   <script src="js/storage.js"></script>
   <script src="js/api.js"></script>
+  <script src="js/currency.js"></script>
   <script src="js/chart.js"></script>
   <script src="js/portfolio.js"></script>
   <script src="js/ocr.js"></script>
