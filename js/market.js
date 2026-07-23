@@ -23,7 +23,7 @@ const MarketAPI = {
     '港股': [
       { secid: '100.HSI',   code: 'HSI',    name: '恒生指数', market: 'HK' },
       { secid: '100.HSCEI', code: 'HSCEI',  name: '恒生国企', market: 'HK' },
-      { secid: '100.HSTECH',code: 'HSTECH', name: '恒生科技', market: 'HK' }
+      { secid: '124.HSTECH',code: 'HSTECH', name: '恒生科技', market: 'HK' }
     ],
     '美股': [
       { secid: '100.NDX', code: 'NDX',    name: '纳指100',   market: 'US' },
@@ -61,6 +61,23 @@ const MarketAPI = {
   _cache: null,
   _cacheAt: 0,
   _CACHE_TTL: 10 * 1000,
+  _LEGACY_SECID_MAP: {
+    '100.HSTECH': '124.HSTECH'
+  },
+
+  normalizeSecid(secid) {
+    const sid = String(secid || '').trim();
+    return this._LEGACY_SECID_MAP[sid] || sid;
+  },
+
+  normalizeSecids(secids) {
+    const dedup = new Set();
+    for (const sid of (secids || [])) {
+      const normalized = this.normalizeSecid(sid);
+      if (normalized) dedup.add(normalized);
+    }
+    return [...dedup];
+  },
 
   _isCryptoSecid(secid) {
     return String(secid || '').startsWith('CRYPTO:');
@@ -107,7 +124,7 @@ const MarketAPI = {
    */
   getIndicesBySecids(secids) {
     const all = this.getAllIndices();
-    return secids.map(id => all.find(i => i.secid === id)).filter(Boolean);
+    return this.normalizeSecids(secids).map(id => all.find(i => i.secid === id)).filter(Boolean);
   },
 
   /**
@@ -145,7 +162,7 @@ const MarketAPI = {
    * @returns {Promise<Array>}
    */
   async fetchAll(secids, ttl, force) {
-    const ids = secids || this.DEFAULT_SELECTED;
+    const ids = this.normalizeSecids(secids || this.DEFAULT_SELECTED);
     const indices = this.getIndicesBySecids(ids);
     if (!indices.length) return [];
     const normalIndices = indices.filter(i => !this._isCryptoSecid(i.secid));

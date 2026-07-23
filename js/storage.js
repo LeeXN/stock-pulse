@@ -52,6 +52,7 @@ const DB = {
       llmMaxTokens: 4096,
       corsProxy: '',
       accentColor: '#4fc3f7',
+      portfolioBaseCurrency: 'CNY',
       marketIndices: MarketAPI ? MarketAPI.DEFAULT_SELECTED : ['1.000001','0.399001','0.399006','100.HSI']
     });
     // 清理掉废弃字段（ocrProvider / baiduApiKey / baiduSecretKey）
