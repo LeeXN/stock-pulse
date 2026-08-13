@@ -692,14 +692,15 @@ const CryptoAPI = {
       if (!item) return { prevClose: 0, points: [] };
       return {
         prevClose: item.prevClose || item.price || 0,
-        points: [{ time: 'latest', price: item.price, avgPrice: item.price, volume: item.volume || 0 }]
+        points: [{ time: Math.floor(Date.now() / 1000), price: item.price, avgPrice: item.price, volume: item.volume || 0 }]
       };
     }
     const symbol = this._normalizeBinanceSymbol(rawCode);
     if (!symbol) return { prevClose: 0, points: [] };
     const rows = await this._binanceKlines(symbol, '1m', 240);
     const points = rows.map(row => ({
-      time: new Date(Number(row[0])).toISOString().replace('T', ' ').slice(0, 16),
+      // Binance 时间戳本身是 UTC，保留为数字，交给图表按用户选择的时区显示。
+      time: Math.floor(Number(row[0]) / 1000),
       price: Number(row[4]) || 0,
       avgPrice: Number(row[4]) || 0,
       volume: Number(row[5]) || 0
@@ -717,6 +718,15 @@ const TushareAPI = {
   _tushareDate(d) {
     const pad = n => String(n).padStart(2, '0');
     return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate());
+  },
+  _marketToday(market) {
+    if (typeof TimeUtils === 'undefined') {
+      const d = new Date();
+      return this._tushareDate(d);
+    }
+    const zone = TimeUtils.getExchangeTimeZone(market);
+    const p = TimeUtils.getZonedParts(Date.now() / 1000, zone);
+    return `${p.year}${String(p.month).padStart(2, '0')}${String(p.day).padStart(2, '0')}`;
   },
   _chartDate(s) {
     if (typeof s !== 'string' || s.length !== 8) return s;
@@ -757,13 +767,16 @@ const TushareAPI = {
 
   async getRealtime(fullCode, settings) {
     const tsCode = CodeConvert.toTushare(fullCode);
-    const today = this._tushareDate(new Date());
+    const market = String(fullCode || '').split(':')[0];
+    const today = this._marketToday(market);
     const data = await this._call('pro_bar', {
       ts_code: tsCode, freq: '1min', start_date: today, end_date: today, adj: 'qfq'
     }, 'trade_time,open,close,high,low,vol', settings);
     if (!data.items || !data.items.length) return { prevClose: 0, points: [] };
     const points = data.items.map(row => ({
-      time: String(row[0]).slice(-8),
+      time: String(row[0]).includes('-')
+        ? String(row[0]).replace(/\//g, '-')
+        : `${today.slice(0, 4)}-${today.slice(4, 6)}-${today.slice(6, 8)} ${String(row[0]).slice(-8)}`,
       price: parseFloat(row[2]) || 0,
       avgPrice: parseFloat(row[2]) || 0,
       volume: parseFloat(row[5]) || 0
@@ -778,7 +791,7 @@ const TushareAPI = {
     for (const fullCode of codes) {
       try {
         const tsCode = CodeConvert.toTushare(fullCode);
-        const today = this._tushareDate(new Date());
+        const today = this._marketToday(fullCode.split(':')[0]);
         const data = await this._call('pro_bar', {
           ts_code: tsCode, freq: 'D', start_date: today, end_date: today, adj: 'qfq'
         }, 'trade_date,open,high,low,close,vol,pre_close', settings);
@@ -1038,8 +1051,15 @@ const JuheAPI = {
       const resp = await fetch(url);
       const data = await resp.json();
       if (data.error_code !== 0 || !Array.isArray(data.result)) return { prevClose: 0, points: [] };
+      const today = typeof TimeUtils !== 'undefined'
+        ? (() => {
+          const p = TimeUtils.getZonedParts(Date.now() / 1000, TimeUtils.getExchangeTimeZone(market));
+          return `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
+        })()
+        : new Date().toISOString().slice(0, 10);
       const points = data.result.map(row => ({
-        time: row[0], price: parseFloat(row[1]) || 0,
+        time: /^\d{1,2}:\d{2}/.test(String(row[0] || '')) ? `${today} ${row[0]}` : row[0],
+        price: parseFloat(row[1]) || 0,
         avgPrice: parseFloat(row[2]) || parseFloat(row[1]) || 0,
         volume: parseFloat(row[3]) || 0
       }));

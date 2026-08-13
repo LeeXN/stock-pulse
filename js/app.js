@@ -23,6 +23,7 @@
     },
     settings: {
       refreshInterval: 10, theme: 'dark', klineCount: 120,
+      timezoneMode: 'exchange', timezone: 'Asia/Shanghai',
       quoteProvider: 'tencent', klineProvider: 'eastmoney',
       llmProvider: 'openai', llmBaseUrl: 'https://api.openai.com/v1',
       llmApiKey: '', llmModel: 'gpt-4o-mini', llmVisionModel: 'gpt-4o-mini',
@@ -36,7 +37,13 @@
     quotes: {},
     _klineCache: {},          // 缓存最近一次 K 线数据，供指标切换时复用
     _chartRequestSeq: 0,
-    _loadingChart: false      // 防止并发 loadChart
+    _loadingChart: false,     // 防止并发 loadChart
+    _lastChartKey: '',
+    _overlayRequestSeq: 0,
+    _overlayKlineCache: {},
+    overlayMode: 'holding',
+    batchPortfolioRows: [],
+    chartSummaryCollapsed: false
   };
 
   // ===== 排序工具 =====
@@ -204,7 +211,12 @@
     listenBackgroundMessages();
     listenStorageChanges();
 
-    ChartManager.init('chartContainer');
+    ChartManager.init('chartContainer', {
+      market: state.currentStock && state.currentStock.market,
+      settings: state.settings
+    });
+    ChartManager.setCrosshairInfoElement('chartCrosshairInfo');
+    ChartManager.setLegendElement('chartLegend');
     if (state.currentStock) {
       showStockInfo(state.currentStock);
       loadChart();
@@ -235,7 +247,12 @@
     if (tab === 'portfolio') renderPortfolio();
     if (tab === 'chart') {
       setTimeout(() => {
-        ChartManager.init('chartContainer');
+        ChartManager.init('chartContainer', {
+          market: state.currentStock && state.currentStock.market,
+          settings: state.settings
+        });
+        ChartManager.setCrosshairInfoElement('chartCrosshairInfo');
+        ChartManager.setLegendElement('chartLegend');
         if (state.currentStock) loadChart();
       }, 50);
     }
@@ -596,6 +613,9 @@
         return;
       }
       const { fullCode } = currentStock;
+      ChartManager.setTimeContext(currentStock.market, state.settings);
+      const chartKey = `${fullCode}:${state.currentPeriod}`;
+      const preserveRange = state._lastChartKey === chartKey;
 
       try {
         if (state.currentPeriod === 'realtime') {
@@ -607,7 +627,11 @@
           } else {
             document.getElementById('stockName').textContent = currentStock.name || fullCode;
           }
-          ChartManager.renderRealtime(data);
+          ChartManager.renderRealtime(data, {
+            market: currentStock.market,
+            settings: state.settings,
+            preserveRange
+          });
         } else {
           const klines = await StockAPI.getKline(fullCode, state.currentPeriod, state.settings.klineCount);
           if (requestId !== state._chartRequestSeq) return;
@@ -622,8 +646,10 @@
             boll: state.indicators.boll,
             macd: state.indicators.macd,
             kdj: state.indicators.kdj,
+            preserveRange
           });
         }
+        state._lastChartKey = chartKey;
       } catch (err) {
         if (requestId !== state._chartRequestSeq) return;
         console.error('[loadChart] error:', err);
@@ -669,6 +695,8 @@
   function showStockInfo(stock) {
     state.currentStock = stock;
     DB.set('currentStock', stock);
+    ChartManager.setTimeContext(stock && stock.market, state.settings);
+    updateMarketTime();
     document.getElementById('stockName').textContent = `${stock.name} (${stock.code})`;
     document.getElementById('stockPrice').textContent = '--';
     document.getElementById('stockChange').textContent = '--';
@@ -680,6 +708,7 @@
     document.getElementById('stockPrice').textContent = '--';
     document.getElementById('stockChange').textContent = '--';
     document.getElementById('stockVol').textContent = '';
+    updateMarketTime();
   }
 
   // ===== Search Helper =====
@@ -1082,7 +1111,7 @@
     for (const d of data) {
       const fromCurrency = CurrencyFX.getCurrencyByMarket(d.market);
       const v = convertAmount(d.marketValue, fromCurrency);
-      const c = convertAmount(d.costValue, fromCurrency);
+      const c = convertAmount(d.totalBuyCost, fromCurrency);
       const p = convertAmount(d.pnl, fromCurrency);
       if (v !== null) totalValue += v;
       if (c !== null) totalCost += c;
@@ -1121,12 +1150,17 @@
     if (el.style.display === 'none') {
       el.style.display = 'block';
       el.innerHTML = '';
-      for (const t of pos.trades.sort((a,b)=>a.date.localeCompare(b.date))) {
+      for (const t of [...pos.trades].sort((a,b) => {
+        const left = `${a.date || ''} ${a.time || ''}`;
+        const right = `${b.date || ''} ${b.time || ''}`;
+        return left.localeCompare(right);
+      })) {
         const cls = t.direction === 'buy' ? 'trade-buy' : 'trade-sell';
         const row = document.createElement('div');
         row.className = 'pos-trade-row';
         const qtyUnit = pos.market === 'CRYPTO' ? '币' : '股';
-        row.innerHTML = `<span class="${cls}">${t.direction==='buy'?'买':'卖'}</span><span>${t.date}</span><span>${t.price}</span><span>${t.quantity}${qtyUnit}</span><span>${t.note||''}</span><button class="wl-del">&times;</button>`;
+        const tradeDate = `${t.date || '--'}${t.time ? ' ' + t.time : ''}`;
+        row.innerHTML = `<span class="${cls}">${t.direction==='buy'?'买':'卖'}</span><span>${tradeDate}</span><span>${t.price}</span><span>${t.quantity}${qtyUnit}</span><span>费:${Number(t.commission || 0).toFixed(2)} 税:${Number(t.stampTax || 0).toFixed(2)}</span><span>${t.note||''}</span><button class="wl-del">&times;</button>`;
         row.querySelector('.wl-del').addEventListener('click', async () => {
           state.portfolio = await Portfolio.deleteTrade(pos.fullCode, t.id);
           renderPortfolio();
@@ -1138,15 +1172,231 @@
     }
   }
 
-  // ===== Overlay Chart =====
-  async function renderOverlayChart() {
-    if (!state.portfolio.length) return;
-    ChartManager.initOverlay('overlayChart');
+  // ===== Portfolio return comparison =====
+  function formatOverlayTime(time, market) {
+    if (typeof time === 'string') return time.replace('T', ' ').slice(0, 10);
+    if (typeof TimeUtils !== 'undefined') {
+      const zone = TimeUtils.resolveTimeZone(market, state.settings);
+      return TimeUtils.formatDate(time, zone);
+    }
+    return String(time || '--');
+  }
+
+  function renderOverlayLegend(lines) {
+    const legend = document.getElementById('overlayLegend');
+    if (!legend) return;
+    legend.replaceChildren();
+    for (const line of lines || []) {
+      const item = document.createElement('span');
+      item.className = 'overlay-legend-item';
+      item.dataset.overlayKey = line.key;
+
+      const visibility = document.createElement('button');
+      visibility.type = 'button';
+      visibility.className = 'overlay-visibility-btn';
+      visibility.title = '显示/隐藏此标的';
+      visibility.addEventListener('click', () => {
+        ChartManager.toggleOverlayLineVisibility(line.key);
+        syncOverlayLegendState();
+      });
+      item.appendChild(visibility);
+
+      const focus = document.createElement('button');
+      focus.type = 'button';
+      focus.className = 'overlay-focus-btn';
+      focus.title = '点击高亮，再次点击取消高亮';
+      const dot = document.createElement('i');
+      dot.className = 'overlay-legend-dot';
+      dot.style.background = line.color;
+      focus.appendChild(dot);
+      const displayLabel = line.code && line.code !== line.label
+        ? `${line.label} (${line.code})` : line.label;
+      focus.title = `${displayLabel} · 点击高亮，再次点击取消高亮`;
+      focus.appendChild(document.createTextNode(displayLabel));
+      focus.addEventListener('click', () => {
+        ChartManager.toggleOverlayHighlight(line.key);
+        syncOverlayLegendState();
+      });
+      item.appendChild(focus);
+
+      const returnEl = document.createElement('span');
+      returnEl.className = `overlay-legend-return ${line.returnPct >= 0 ? 'price-up' : 'price-down'}`;
+      const returnText = `${line.returnPct >= 0 ? '+' : ''}${line.returnPct.toFixed(2)}%`;
+      const pnlText = line.metric === 'holding' && Number.isFinite(Number(line.pnl))
+        ? ` · ${formatSignedAmountByCurrency(line.pnl, line.currency, 2)}` : '';
+      returnEl.textContent = `${returnText}${pnlText}`;
+      returnEl.title = line.metric === 'holding' ? '实际累计收益率 · 实际盈亏金额' : '区间股价涨跌幅';
+      item.appendChild(returnEl);
+      legend.appendChild(item);
+    }
+    syncOverlayLegendState();
+  }
+
+  function syncOverlayLegendState() {
+    const legend = document.getElementById('overlayLegend');
+    if (!legend) return;
+    const viewState = ChartManager.getOverlayViewState();
+    legend.querySelectorAll('[data-overlay-key]').forEach(item => {
+      const key = item.dataset.overlayKey;
+      const visible = viewState.visible[key] !== false;
+      const highlighted = viewState.highlightKey === key;
+      item.classList.toggle('highlighted', highlighted);
+      item.classList.toggle('muted', !visible);
+      const visibility = item.querySelector('.overlay-visibility-btn');
+      if (visibility) visibility.textContent = visible ? '●' : '○';
+      const focus = item.querySelector('.overlay-focus-btn');
+      if (focus) focus.setAttribute('aria-label', highlighted ? '取消高亮' : '高亮此标的');
+    });
+  }
+
+  function syncOverlayMetricUI() {
+    const metricEl = document.getElementById('overlayMetric');
+    const titleEl = document.getElementById('overlayTitle');
+    const hintEl = document.getElementById('overlayMetricHint');
+    const mode = state.overlayMode === 'price' ? 'price' : 'holding';
+    if (metricEl) metricEl.value = mode;
+    if (titleEl) titleEl.textContent = mode === 'holding' ? '持仓收益对比' : '股价表现对比';
+    if (hintEl) {
+      hintEl.textContent = mode === 'holding'
+        ? '按交易记录计算累计收益'
+        : '共同区间首日收盘价 = 0%';
+      hintEl.title = mode === 'holding'
+        ? '收益率 =（持仓市值 + 累计卖出净收入 - 累计买入成本）÷ 累计买入成本'
+        : '价格表现 =（区间末收盘价 ÷ 区间首日收盘价 - 1）× 100%';
+    }
+  }
+
+  function getMarketToday(market) {
+    if (typeof TimeUtils !== 'undefined') {
+      const zone = TimeUtils.getExchangeTimeZone(market);
+      const parts = TimeUtils.getZonedParts(Date.now() / 1000, zone);
+      if (parts) {
+        return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
+      }
+    }
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  async function loadOverlayKline(pos, count, forceRefresh = false) {
+    const cacheKey = `${pos.fullCode}:daily:${count}`;
+    const cached = state._overlayKlineCache[cacheKey];
+    if (!forceRefresh && cached && Date.now() - cached.timestamp < 5 * 60 * 1000 && cached.data.length) {
+      return { klines: cached.data, source: 'cache', error: '' };
+    }
+
+    let lastError = '';
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const klines = await StockAPI.getKline(pos.fullCode, 'daily', count);
+        if (Array.isArray(klines) && klines.length) {
+          state._overlayKlineCache[cacheKey] = { data: klines, timestamp: Date.now() };
+          return { klines, source: 'network', error: '' };
+        }
+        lastError = '行情源返回空数据';
+      } catch (error) {
+        lastError = error && error.message ? error.message : '请求失败';
+      }
+      if (attempt === 0) await new Promise(resolve => setTimeout(resolve, 250));
+    }
+
+    // 复用主图/迷你图已经拿到的日 K，网络暂时限流时仍可展示。
+    const fallback = state._klineCache[pos.fullCode];
+    if (Array.isArray(fallback) && fallback.length && fallback.every(item => /^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/.test(String(item.time || '')))) {
+      return { klines: fallback, source: 'chart-cache', error: lastError };
+    }
+    return { klines: [], source: 'empty', error: lastError || '无日 K 数据' };
+  }
+
+  async function renderOverlayChart(forceRefresh = false) {
+    const statusEl = document.getElementById('overlayStatus');
+    const positions = state.portfolio.filter(pos => pos && pos.fullCode);
+    const mode = state.overlayMode === 'price' ? 'price' : 'holding';
+    const requestId = ++state._overlayRequestSeq;
+    renderOverlayLegend([]);
+    syncOverlayMetricUI();
+
+    ChartManager.initOverlay('overlayChart', {
+      market: positions[0] && positions[0].market,
+      settings: state.settings
+    });
     ChartManager.clearOverlay();
-    for (const pos of state.portfolio) {
-      const klines = await StockAPI.getKline(pos.fullCode, 'daily', 120);
-      const color = Portfolio.getColor(pos.colorIndex || 0);
-      await ChartManager.addOverlayLine(pos.fullCode, pos.name, color, klines);
+
+    if (!positions.length) {
+      if (statusEl) {
+        statusEl.className = 'overlay-status error';
+        statusEl.textContent = '暂无持仓记录，先添加交易后再查看收益对比。';
+      }
+      return;
+    }
+
+    const count = Number(state.settings.klineCount) || 120;
+    if (statusEl) {
+      statusEl.className = 'overlay-status';
+      statusEl.textContent = mode === 'holding'
+        ? `正在加载 ${positions.length} 个标的的日 K 和交易记录...`
+        : `正在加载 ${positions.length} 个标的的近 ${count} 根日 K...`;
+    }
+
+    let latestQuotes = {};
+    if (mode === 'holding') {
+      try {
+        latestQuotes = await StockAPI.getQuotes(positions.map(pos => pos.fullCode)) || {};
+        state.quotes = { ...state.quotes, ...latestQuotes };
+      } catch (error) {
+        console.warn('[Portfolio comparison] latest quotes unavailable:', error.message || String(error));
+      }
+    }
+
+    // 行情源对批量历史请求较敏感，逐个加载并缓存，避免持仓较多时整批限流。
+    const results = new Array(positions.length);
+    for (let index = 0; index < positions.length; index++) {
+      if (requestId !== state._overlayRequestSeq) return;
+      const pos = positions[index];
+      const loaded = await loadOverlayKline(pos, count, forceRefresh === true);
+      results[index] = { pos, ...loaded };
+      if (statusEl) {
+        statusEl.textContent = `正在加载日 K：${index + 1}/${positions.length} · ${pos.name || pos.code}`;
+      }
+    }
+    if (requestId !== state._overlayRequestSeq) return;
+
+    const minimumKlineCount = mode === 'holding' ? 1 : 2;
+    const valid = results.filter(result => result && result.klines.length >= minimumKlineCount);
+    const failed = results.filter(result => result && result.klines.length < minimumKlineCount);
+    const prepared = ChartManager.renderOverlayLines(valid.map(result => ({
+      key: result.pos.fullCode,
+      label: result.pos.name || result.pos.code || result.pos.fullCode,
+      code: result.pos.code,
+      color: Portfolio.getColor(result.pos.colorIndex || 0),
+      currency: CurrencyFX.getCurrencyByMarket(result.pos.market),
+      market: result.pos.market,
+      trades: result.pos.trades,
+      latestPrice: latestQuotes[result.pos.fullCode] && latestQuotes[result.pos.fullCode].price,
+      latestTime: getMarketToday(result.pos.market),
+      klineData: result.klines
+    })), { mode, settings: state.settings });
+    renderOverlayLegend(prepared.lines);
+
+    if (!prepared.lines.length) {
+      if (statusEl) {
+        statusEl.className = 'overlay-status error';
+        statusEl.textContent = mode === 'holding'
+          ? `没有找到可关联的交易记录或日 K 数据（已获取 ${valid.length}/${positions.length} 个标的），请检查交易日期和数据源。`
+          : '没有足够的日 K 数据，暂时无法生成价格表现对比。';
+      }
+      return;
+    }
+
+    const market = positions[0].market;
+    const rangeText = `${formatOverlayTime(prepared.startTime, market)} 至 ${formatOverlayTime(prepared.endTime, market)}`;
+    const failedText = failed.length ? `；${failed.length} 个标的无足够数据` : '';
+    if (statusEl) {
+      statusEl.className = failed.length ? 'overlay-status' : 'overlay-status ok';
+      statusEl.textContent = mode === 'holding'
+        ? `交易记录收益区间：${rangeText} · 已显示 ${prepared.lines.length}/${positions.length} 个标的${failedText}`
+        : prepared.comparisonScope === 'individual'
+          ? `各标的可用区间：${rangeText} · 已显示 ${prepared.lines.length}/${positions.length} 个标的${failedText}`
+          : `共同区间：${rangeText} · 已显示 ${prepared.lines.length}/${positions.length} 个标的${failedText}`;
     }
   }
 
@@ -1561,9 +1811,14 @@
   }
 
   function openPositionModal(existingPos) {
-    document.getElementById('posDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('posDate').value = typeof TimeUtils !== 'undefined'
+      ? TimeUtils.todayInputValue()
+      : new Date().toISOString().split('T')[0];
     document.getElementById('posPrice').value = '';
     document.getElementById('posQuantity').value = '';
+    document.getElementById('posTime').value = '';
+    document.getElementById('posCommission').value = '';
+    document.getElementById('posStampTax').value = '';
     document.getElementById('posNote').value = '';
     document.getElementById('posDirection').value = 'buy';
     if (existingPos) {
@@ -1624,50 +1879,219 @@
     closeAllModals();
   }
 
-  async function handleBatchPortfolio() {
+  function resetBatchPortfolioImport(clearInput = true) {
+    state.batchPortfolioRows = [];
+    const input = document.getElementById('batchPortfolioInput');
+    const status = document.getElementById('batchPortfolioStatus');
+    const preview = document.getElementById('batchPortfolioPreview');
+    const table = document.getElementById('batchPortfolioPreviewTable');
+    const submit = document.getElementById('batchPortfolioSubmit');
+    const confirm = document.getElementById('batchPortfolioConfirm');
+    const reset = document.getElementById('batchPortfolioReset');
+    if (input && clearInput) input.value = '';
+    const fileInput = document.getElementById('batchPortfolioFile');
+    const fileName = document.getElementById('batchPortfolioFileName');
+    if (fileInput) fileInput.value = '';
+    if (fileName) fileName.textContent = '';
+    if (status) status.textContent = '';
+    if (preview) preview.style.display = 'none';
+    if (table) table.replaceChildren();
+    if (submit) { submit.style.display = ''; submit.disabled = false; submit.textContent = '解析并预览'; }
+    if (confirm) { confirm.style.display = 'none'; confirm.disabled = false; }
+    if (reset) reset.style.display = 'none';
+  }
+
+  async function resolveBatchPortfolioRows(rows) {
+    const uniqueCodes = [...new Set(rows.map(row => String(row.code || '').trim()).filter(Boolean))];
+    const matches = {};
+    let cursor = 0;
+    async function worker() {
+      while (cursor < uniqueCodes.length) {
+        const code = uniqueCodes[cursor++];
+        try {
+          const parsed = OCR.parseBatchCodes(code)[0];
+          // 搜索接口按代码/名称返回结果；不要把内部的 SH:600519 格式直接传给它。
+          const searchValue = parsed ? parsed.code : code;
+          const results = await StockAPI.search(searchValue);
+          const match = parsed
+            ? (results.find(r => r.fullCode === parsed.fullCode) || results.find(r => r.code === parsed.code) || results[0])
+            : results[0];
+          matches[code] = match || null;
+        } catch (_) {
+          matches[code] = null;
+        }
+      }
+    }
+    await Promise.all([worker(), worker(), worker()]);
+    for (const row of rows) {
+      row.match = matches[String(row.code || '').trim()] || null;
+      row.matchLabel = row.match ? `${row.match.name} (${row.match.code})` : '未找到标的';
+    }
+    return rows;
+  }
+
+  function addPreviewInput(cell, field, value, type = 'text') {
+    const input = document.createElement('input');
+    input.type = type;
+    input.className = 'batch-preview-field';
+    input.dataset.field = field;
+    input.value = value == null ? '' : value;
+    if (type === 'number') {
+      input.step = 'any';
+      input.min = '0';
+    }
+    cell.appendChild(input);
+    return input;
+  }
+
+  function renderBatchPortfolioPreview(rows) {
+    const preview = document.getElementById('batchPortfolioPreview');
+    const table = document.getElementById('batchPortfolioPreviewTable');
+    if (!preview || !table) return;
+    table.replaceChildren();
+    const headers = ['行', '标的', '方向', '价格', '数量', '日期', '时间', '手续费', '印花税', '备注'];
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    headers.forEach(label => {
+      const th = document.createElement('th');
+      th.textContent = label;
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    rows.forEach((row, index) => {
+      const tr = document.createElement('tr');
+      tr.dataset.index = String(index);
+      const lineCell = document.createElement('td');
+      lineCell.textContent = String(row.sourceLine || index + 1);
+      tr.appendChild(lineCell);
+
+      const codeCell = document.createElement('td');
+      addPreviewInput(codeCell, 'code', row.code);
+      const matchHint = document.createElement('small');
+      matchHint.className = row.match ? 'preview-match ok' : 'preview-match err';
+      matchHint.textContent = row.matchLabel || '待匹配';
+      codeCell.appendChild(matchHint);
+      tr.appendChild(codeCell);
+
+      const directionCell = document.createElement('td');
+      const direction = document.createElement('select');
+      direction.className = 'batch-preview-field';
+      direction.dataset.field = 'direction';
+      [['buy', '买入'], ['sell', '卖出']].forEach(([value, label]) => {
+        const option = document.createElement('option');
+        option.value = value; option.textContent = label;
+        option.selected = row.direction === value;
+        direction.appendChild(option);
+      });
+      directionCell.appendChild(direction);
+      tr.appendChild(directionCell);
+
+      const numericFields = [
+        ['price', row.price], ['quantity', row.quantity], ['date', row.date, 'date'],
+        ['time', row.time, 'time'], ['commission', row.commission], ['stampTax', row.stampTax]
+      ];
+      for (const [field, value, type = 'number'] of numericFields) {
+        const cell = document.createElement('td');
+        addPreviewInput(cell, field, value, type);
+        tr.appendChild(cell);
+      }
+      const noteCell = document.createElement('td');
+      addPreviewInput(noteCell, 'note', row.note || '');
+      tr.appendChild(noteCell);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    preview.style.display = 'block';
+  }
+
+  function readBatchPortfolioPreview() {
+    const table = document.getElementById('batchPortfolioPreviewTable');
+    if (!table) return state.batchPortfolioRows;
+    table.querySelectorAll('tbody tr').forEach(tr => {
+      const index = Number(tr.dataset.index);
+      const row = state.batchPortfolioRows[index];
+      if (!row) return;
+      tr.querySelectorAll('[data-field]').forEach(input => {
+        const field = input.dataset.field;
+        row[field] = input.value.trim();
+        if (['price', 'quantity', 'commission', 'stampTax'].includes(field)) row[field] = Number(input.value) || 0;
+      });
+    });
+    return state.batchPortfolioRows;
+  }
+
+  async function previewBatchPortfolio() {
     const text = document.getElementById('batchPortfolioInput').value.trim();
     const statusEl = document.getElementById('batchPortfolioStatus');
     const submitBtn = document.getElementById('batchPortfolioSubmit');
-    if (!text) return;
+    const confirmBtn = document.getElementById('batchPortfolioConfirm');
+    const resetBtn = document.getElementById('batchPortfolioReset');
+    if (!text) { statusEl.textContent = '请先粘贴或输入交易记录'; return; }
     submitBtn.disabled = true;
-    statusEl.innerHTML = '解析中...';
+    statusEl.textContent = '正在解析并匹配标的...';
     const parsed = OCR.parseBatchPortfolio(text);
     if (!parsed.length) {
-      statusEl.innerHTML = '<span class="err">未识别到有效持仓数据。格式：代码/名称 价格 数量 [日期]</span>';
+      statusEl.innerHTML = '<span class="err">未识别到有效交易记录，请检查代码、价格和数量格式。</span>';
       submitBtn.disabled = false;
       return;
     }
-    statusEl.innerHTML = `识别到 ${parsed.length} 条记录，正在导入...`;
-    for (const p of parsed) {
-      const results = await StockAPI.search(p.code);
-      const match = results.find(r => r.code === p.code) || results[0];
-      if (match) {
-        await Portfolio.addTrade({
-          fullCode: match.fullCode, code: match.code,
-          name: match.name, market: match.market,
-          direction: p.direction, price: p.price,
-          quantity: p.quantity, date: p.date, note: p.note
-        });
-        const degraded = (p.price === 0 || p.quantity === 0);
-        const parts = [];
-        if (p.price > 0) parts.push(p.price); else parts.push('<i>价格待补</i>');
-        if (p.quantity > 0) parts.push(`x${p.quantity}`); else parts.push('<i>x数量待补</i>');
-        const label = parts.join('');
-        const cls = degraded ? 'warn' : 'ok';
-        statusEl.innerHTML += `<br><span class="${cls}">+ ${match.name} ${label}</span>`;
-      } else {
-        statusEl.innerHTML += `<br><span class="err">? ${p.code} 未找到</span>`;
-      }
+    state.batchPortfolioRows = await resolveBatchPortfolioRows(parsed);
+    renderBatchPortfolioPreview(state.batchPortfolioRows);
+    const found = state.batchPortfolioRows.filter(row => row.match).length;
+    const invalid = state.batchPortfolioRows.filter(row => !row.price || !row.quantity).length;
+    statusEl.innerHTML = `识别到 <b>${state.batchPortfolioRows.length}</b> 条记录，已匹配 ${found} 条。` +
+      (invalid ? ` <span class="warn">${invalid} 条价格/数量待补</span>，修改预览后再确认。` : ' 请核对后确认导入。');
+    submitBtn.style.display = 'none';
+    confirmBtn.style.display = '';
+    resetBtn.style.display = '';
+    submitBtn.disabled = false;
+  }
+
+  async function confirmBatchPortfolio() {
+    const statusEl = document.getElementById('batchPortfolioStatus');
+    const confirmBtn = document.getElementById('batchPortfolioConfirm');
+    const rows = readBatchPortfolioPreview();
+    confirmBtn.disabled = true;
+    statusEl.textContent = '正在重新校验标的...';
+    await resolveBatchPortfolioRows(rows);
+    const invalid = rows.filter(row => !row.match || !row.price || !row.quantity || !row.date || !['buy', 'sell'].includes(row.direction));
+    if (invalid.length) {
+      renderBatchPortfolioPreview(rows);
+      statusEl.innerHTML = `<span class="err">有 ${invalid.length} 条记录无法导入：请检查标的、价格和数量。</span>`;
+      confirmBtn.disabled = false;
+      return;
+    }
+    let imported = 0;
+    for (const row of rows) {
+      await Portfolio.addTrade({
+        fullCode: row.match.fullCode,
+        code: row.match.code,
+        name: row.match.name,
+        market: row.match.market,
+        direction: row.direction,
+        price: Number(row.price),
+        quantity: Number(row.quantity),
+        date: row.date,
+        time: row.time,
+        commission: Number(row.commission) || 0,
+        stampTax: Number(row.stampTax) || 0,
+        note: row.note
+      });
+      imported++;
     }
     state.portfolio = await DB.get('portfolio', []);
-    const hasDegraded = parsed.some(p => p.price === 0 || p.quantity === 0);
-    statusEl.innerHTML += hasDegraded
-      ? `<br><b>导入完成</b>（标记 <span class="warn">价格/数量待补</span> 的条目请在持仓页手动补全）`
-      : `<br><b>导入完成</b>`;
     if (state.chartSource === 'portfolio') await rebuildChartChips();
-    renderPortfolio();
-    submitBtn.disabled = false;
-    closeAllModals();
+    if (state.currentTab === 'portfolio') await renderPortfolio();
+    statusEl.innerHTML = `<span class="ok">已成功导入 ${imported} 条交易记录。</span> 可直接关闭窗口。`;
+    confirmBtn.disabled = false;
+  }
+
+  // 保留旧调用名，OCR 导入路径仍然可以复用新的预览流程。
+  async function handleBatchPortfolio() {
+    return previewBatchPortfolio();
   }
 
   // ===== OCR =====
@@ -1818,12 +2242,18 @@
   }
 
   function updateMarketTime() {
-    const now = new Date();
-    const h = now.getHours(), m = now.getMinutes();
-    const timeStr = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
-    const isTrading = (h===9&&m>=30)||(h>=10&&h<11)||(h===11&&m<=30)||(h>=13&&h<15);
-    const isWeekday = now.getDay()>=1 && now.getDay()<=5;
-    document.getElementById('marketTime').textContent = `${timeStr} ${isWeekday&&isTrading?'交易中':'休市'}`;
+    const market = (state.currentStock && state.currentStock.market) || 'SH';
+    const timezone = typeof TimeUtils !== 'undefined'
+      ? TimeUtils.resolveTimeZone(market, state.settings)
+      : 'Asia/Shanghai';
+    const timeStr = typeof TimeUtils !== 'undefined'
+      ? TimeUtils.formatTime(Date.now() / 1000, timezone)
+      : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const status = typeof TimeUtils !== 'undefined' && TimeUtils.isMarketTrading(Date.now() / 1000, market)
+      ? '交易中' : '休市';
+    const zoneLabel = state.settings.timezoneMode === 'local' ? '本地' :
+      (state.settings.timezoneMode === 'custom' ? (state.settings.timezone || '自定义') : '交易所');
+    document.getElementById('marketTime').textContent = `${timeStr} ${status} · ${zoneLabel}`;
   }
 
   function applyTheme(theme) {
@@ -1838,6 +2268,15 @@
     const g = parseInt(color.slice(3,5), 16);
     const b = parseInt(color.slice(5,7), 16);
     document.documentElement.style.setProperty('--accent-rgb', `${r},${g},${b}`);
+  }
+
+  function syncTimezoneField() {
+    const modeEl = document.getElementById('timezoneMode');
+    const timezoneEl = document.getElementById('timezone');
+    if (!modeEl || !timezoneEl) return;
+    const custom = modeEl.value === 'custom';
+    timezoneEl.style.display = custom ? 'block' : 'none';
+    timezoneEl.disabled = !custom;
   }
 
   /**
@@ -2141,6 +2580,16 @@
       });
     });
 
+    const summaryToggle = document.getElementById('toggleSummaryBtn');
+    const summaryTable = document.getElementById('stockSummaryTable');
+    if (summaryToggle && summaryTable) {
+      summaryToggle.addEventListener('click', () => {
+        state.chartSummaryCollapsed = !state.chartSummaryCollapsed;
+        summaryTable.style.display = state.chartSummaryCollapsed ? 'none' : '';
+        summaryToggle.textContent = state.chartSummaryCollapsed ? '展开' : '收起';
+      });
+    }
+
     // Indicator toggles
     document.querySelectorAll('.ind-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -2262,11 +2711,19 @@
 
     // Portfolio: batch
     document.getElementById('batchPortfolioBtn').addEventListener('click', () => {
-      document.getElementById('batchPortfolioInput').value = '';
-      document.getElementById('batchPortfolioStatus').innerHTML = '';
+      resetBatchPortfolioImport();
       openModal('batchPortfolioModal');
     });
     document.getElementById('batchPortfolioSubmit').addEventListener('click', handleBatchPortfolio);
+    document.getElementById('batchPortfolioConfirm').addEventListener('click', confirmBatchPortfolio);
+    document.getElementById('batchPortfolioReset').addEventListener('click', () => resetBatchPortfolioImport(false));
+    document.getElementById('batchPortfolioFile').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      document.getElementById('batchPortfolioInput').value = await file.text();
+      document.getElementById('batchPortfolioFileName').textContent = file.name;
+      await previewBatchPortfolio();
+    });
 
     // Portfolio: OCR
     document.getElementById('ocrPortfolioBtn').addEventListener('click', () => {
@@ -2309,6 +2766,9 @@
         direction: document.getElementById('posDirection').value,
         price, quantity,
         date: document.getElementById('posDate').value,
+        time: document.getElementById('posTime').value,
+        commission: parseFloat(document.getElementById('posCommission').value) || 0,
+        stampTax: parseFloat(document.getElementById('posStampTax').value) || 0,
         note: document.getElementById('posNote').value
       });
       closeAllModals();
@@ -2327,6 +2787,9 @@
       if (accentInput) accentInput.value = accentVal;
       if (accentLabel) accentLabel.textContent = accentVal;
       document.getElementById('klineCount').value = state.settings.klineCount;
+      document.getElementById('timezoneMode').value = state.settings.timezoneMode || 'exchange';
+      document.getElementById('timezone').value = state.settings.timezone || 'Asia/Shanghai';
+      syncTimezoneField();
       document.getElementById('portfolioBaseCurrency').value = state.settings.portfolioBaseCurrency || 'CNY';
       fillProviderDropdowns();
       document.getElementById('quoteProvider').value = state.settings.quoteProvider || 'tencent';
@@ -2397,6 +2860,28 @@
       await DB.set('settings', state.settings);
       if (state.currentStock) loadChart();
     });
+    document.getElementById('timezoneMode').addEventListener('change', async (e) => {
+      state.settings.timezoneMode = e.target.value;
+      syncTimezoneField();
+      await DB.set('settings', state.settings);
+      ChartManager.setTimeContext(state.currentStock && state.currentStock.market, state.settings);
+      updateMarketTime();
+      if (state.currentStock) loadChart();
+    });
+    document.getElementById('timezone').addEventListener('change', async (e) => {
+      const value = e.target.value.trim();
+      if (typeof TimeUtils !== 'undefined' && !TimeUtils.isValidTimeZone(value)) {
+        alert('时区格式无效，例如：Asia/Shanghai、America/New_York');
+        e.target.value = state.settings.timezone || 'Asia/Shanghai';
+        return;
+      }
+      state.settings.timezone = value;
+      state.settings.timezoneMode = 'custom';
+      await DB.set('settings', state.settings);
+      ChartManager.setTimeContext(state.currentStock && state.currentStock.market, state.settings);
+      updateMarketTime();
+      if (state.currentStock) loadChart();
+    });
     document.getElementById('portfolioBaseCurrency').addEventListener('change', async (e) => {
       state.settings.portfolioBaseCurrency = String(e.target.value || 'CNY').toUpperCase();
       await DB.set('settings', state.settings);
@@ -2417,6 +2902,7 @@
       await DB.set('settings', state.settings);
       StockAPI.init(state.settings);
       // 切换 K 线源后清空缓存，强制重拉
+      state._overlayKlineCache = {};
       if (state.currentStock) {
         delete state._klineCache[state.currentStock.fullCode];
         loadChart();
@@ -2432,6 +2918,7 @@
       state.settings.intlKlineProvider = e.target.value;
       await DB.set('settings', state.settings);
       StockAPI.init(state.settings);
+      state._overlayKlineCache = {};
       if (state.currentStock) {
         delete state._klineCache[state.currentStock.fullCode];
         loadChart();
@@ -2600,6 +3087,19 @@
         document.getElementById('portfolioOverlay').style.display = view === 'overlay' ? 'block' : 'none';
         if (view === 'overlay') renderOverlayChart();
       });
+    });
+    const overlayRefreshBtn = document.getElementById('overlayRefreshBtn');
+    if (overlayRefreshBtn) overlayRefreshBtn.addEventListener('click', () => renderOverlayChart(true));
+    const overlayMetric = document.getElementById('overlayMetric');
+    if (overlayMetric) overlayMetric.addEventListener('change', () => {
+      state.overlayMode = overlayMetric.value === 'price' ? 'price' : 'holding';
+      syncOverlayMetricUI();
+      renderOverlayChart();
+    });
+    const overlayClearHighlight = document.getElementById('overlayClearHighlight');
+    if (overlayClearHighlight) overlayClearHighlight.addEventListener('click', () => {
+      ChartManager.clearOverlayHighlight();
+      syncOverlayLegendState();
     });
 
     // OCR drop zone

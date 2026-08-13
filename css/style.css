@@ -145,6 +145,25 @@ body {
   display:flex; gap:12px; padding:4px 12px; align-items:baseline;
   font-size:12px; flex-shrink:0;
 }
+.chart-summary-toolbar {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:3px 8px; color:var(--text-muted); font-size:10px;
+  border-bottom:1px solid var(--border);
+}
+.chart-summary-toggle {
+  border:0; background:transparent; color:var(--accent); cursor:pointer;
+  font-size:10px; padding:1px 4px;
+}
+.chart-crosshair-info {
+  color:var(--text-muted); font-size:10px; margin-left:8px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.chart-legend {
+  display:flex; gap:8px; flex-wrap:wrap; padding:0 12px 3px;
+  color:var(--text-muted); font-size:10px; min-height:14px;
+}
+.chart-legend-item { white-space:nowrap; }
+.chart-legend-dot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:3px; }
 .stock-name { font-weight:600; }
 .stock-price { font-size:16px; font-weight:700; }
 .stock-change { font-size:12px; }
@@ -154,7 +173,64 @@ body {
 
 /* Chart container - flex fill */
 #chartContainer { flex:1; min-height:200px; padding:0 4px; }
-#overlayChart { width:100%; height:340px; padding:0 4px; }
+#overlayChart { width:100%; height:320px; padding:0 4px; }
+.overlay-toolbar {
+  display:flex; justify-content:space-between; align-items:center;
+  gap:8px; padding:8px 12px 4px; color:var(--text-primary); font-size:11px;
+}
+.overlay-toolbar > div:first-child { flex:1; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.overlay-toolbar .hint { display:inline; margin-left:6px; }
+.overlay-toolbar select {
+  padding:4px 6px; border:1px solid var(--border); border-radius:3px;
+  background:var(--bg-input); color:var(--text-primary); font-size:10px;
+}
+.overlay-toolbar .secondary-btn { width:auto; padding:4px 10px; margin:0; }
+.overlay-status {
+  min-height:17px; padding:0 12px 3px; color:var(--text-secondary); font-size:10px;
+}
+.overlay-status.error { color:var(--danger); }
+.overlay-status.ok { color:var(--down); }
+.overlay-legend-tools {
+  display:flex; align-items:center; gap:7px; padding:2px 12px 4px;
+  color:var(--text-secondary); font-size:10px;
+}
+.overlay-legend-tools .hint { margin:0; flex:1; }
+.overlay-clear-highlight {
+  border:0; background:transparent; color:var(--accent); cursor:pointer;
+  padding:1px 3px; font:inherit;
+}
+.overlay-legend {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+  gap:5px 8px; padding:2px 12px 8px; max-height:190px; overflow-y:auto;
+  color:var(--text-secondary); font-size:10px;
+}
+.overlay-legend-item {
+  display:grid; grid-template-columns:18px minmax(0,1fr);
+  grid-template-rows:auto auto; grid-template-areas:'visibility focus' 'visibility return';
+  align-items:center; column-gap:4px; row-gap:2px; min-width:0;
+  padding:4px 5px; border:1px solid transparent; border-radius:3px;
+}
+.overlay-legend-item.highlighted { border-color:var(--accent); background:var(--bg-hover); }
+.overlay-legend-item.muted { opacity:.55; }
+.overlay-visibility-btn {
+  grid-area:visibility;
+  border:0; background:transparent; color:var(--text-secondary); cursor:pointer;
+  padding:0; font-size:12px; line-height:1;
+}
+.overlay-focus-btn {
+  grid-area:focus;
+  display:flex; align-items:center; min-width:0; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; border:0; background:transparent; color:var(--text-primary);
+  cursor:pointer; padding:0; text-align:left; font:inherit; font-weight:600;
+}
+.overlay-focus-btn:hover { color:var(--accent); }
+.overlay-legend-dot {
+  display:inline-block; flex:none; width:7px; height:7px; border-radius:50%; margin-right:3px;
+}
+.overlay-legend-return {
+  grid-area:return; margin:0; min-width:0; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; font-weight:600;
+}
 
 /* === Search === */
 .stock-search-wrap { position:relative; flex:1; }
@@ -361,6 +437,25 @@ body {
 }
 .batch-status .ok { color:var(--down); }
 .batch-status .err { color:var(--danger); }
+.batch-status .warn { color:#f0b90b; }
+.batch-import-actions { display:flex; gap:8px; align-items:center; }
+.batch-file-row { display:flex; align-items:center; gap:8px; margin-top:6px; }
+.batch-file-btn { display:inline-block; width:auto; padding:4px 8px; cursor:pointer; }
+.batch-import-actions .primary-btn,
+.batch-import-actions .secondary-btn { flex:1; margin-top:4px; }
+.batch-portfolio-preview { margin:8px 0; border:1px solid var(--border); border-radius:4px; }
+.preview-title { padding:6px 8px; color:var(--text-secondary); font-size:11px; border-bottom:1px solid var(--border); }
+.preview-table-wrap { max-height:260px; overflow:auto; }
+.batch-portfolio-preview table { width:100%; border-collapse:collapse; min-width:850px; font-size:10px; }
+.batch-portfolio-preview th,
+.batch-portfolio-preview td { padding:4px; border-bottom:1px solid var(--border); white-space:nowrap; vertical-align:top; }
+.batch-portfolio-preview th { position:sticky; top:0; z-index:1; background:var(--bg-card); color:var(--text-muted); font-weight:500; }
+.batch-preview-field { width:72px; min-width:54px; padding:3px 4px; border:1px solid var(--border); border-radius:3px; background:var(--bg-input); color:var(--text-primary); font:inherit; }
+.batch-portfolio-preview td:nth-child(2) .batch-preview-field { width:82px; }
+.batch-portfolio-preview td:last-child .batch-preview-field { width:110px; }
+.preview-match { display:block; max-width:110px; overflow:hidden; text-overflow:ellipsis; margin-top:3px; font-size:9px; }
+.preview-match.ok { color:var(--down); }
+.preview-match.err { color:var(--danger); }
 
 /* === OCR === */
 .ocr-drop-zone {
@@ -853,5 +948,3 @@ textarea:disabled { opacity:0.5; cursor:not-allowed; }
 }
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--accent); }
-
-
