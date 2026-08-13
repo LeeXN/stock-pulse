@@ -38,6 +38,8 @@ const DB = {
       refreshInterval: 10,
       theme: 'dark',
       klineCount: 120,
+      timezoneMode: 'exchange',
+      timezone: 'Asia/Shanghai',
       quoteProvider: 'tencent',
       klineProvider: 'eastmoney',
       intlQuoteProvider: '',

@@ -26,11 +26,14 @@ const Portfolio = {
       portfolio.push(pos);
     }
     pos.trades.push({
-      id: Date.now().toString(36),
+      id: `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
       direction: trade.direction,
       price: trade.price,
       quantity: trade.quantity,
       date: trade.date,
+      time: trade.time || '',
+      commission: Number(trade.commission) || 0,
+      stampTax: Number(trade.stampTax) || 0,
       note: trade.note || '',
       timestamp: Date.now()
     });
@@ -71,15 +74,18 @@ const Portfolio = {
   calcPosition(pos, currentPrice) {
     let totalBuyQty = 0, totalSellQty = 0;
     let totalBuyCost = 0, totalSellRevenue = 0;
+    let totalCommission = 0, totalStampTax = 0;
 
     for (const t of pos.trades) {
       if (t.direction === 'buy') {
         totalBuyQty += t.quantity;
-        totalBuyCost += t.price * t.quantity;
+        totalBuyCost += t.price * t.quantity + (Number(t.commission) || 0);
       } else {
         totalSellQty += t.quantity;
-        totalSellRevenue += t.price * t.quantity;
+        totalSellRevenue += t.price * t.quantity - (Number(t.commission) || 0) - (Number(t.stampTax) || 0);
       }
+      totalCommission += Number(t.commission) || 0;
+      totalStampTax += Number(t.stampTax) || 0;
     }
 
     const holdingQty = totalBuyQty - totalSellQty;
@@ -87,7 +93,10 @@ const Portfolio = {
     const marketValue = holdingQty * currentPrice;
     const costValue = holdingQty * avgCost;
     const pnl = marketValue - costValue + totalSellRevenue - (totalSellQty * avgCost);
-    const pnlPercent = costValue > 0 ? ((marketValue - costValue) / costValue * 100) : 0;
+    const unrealizedPnl = marketValue - costValue;
+    const unrealizedPnlPercent = costValue > 0 ? (unrealizedPnl / costValue * 100) : 0;
+    // 持仓收益率采用累计买入成本作为投入基数，包含已实现收益和交易费用。
+    const pnlPercent = totalBuyCost > 0 ? (pnl / totalBuyCost * 100) : 0;
 
     return {
       holdingQty,
@@ -96,10 +105,14 @@ const Portfolio = {
       costValue,
       pnl,
       pnlPercent,
+      unrealizedPnl,
+      unrealizedPnlPercent,
       totalBuyQty,
       totalSellQty,
       totalBuyCost,
-      totalSellRevenue
+      totalSellRevenue,
+      totalCommission,
+      totalStampTax
     };
   },
 

@@ -66,6 +66,10 @@
       </div>
     </div>
     <!-- Multi-stock summary table (同花顺风格) -->
+    <div class="chart-summary-toolbar">
+      <span>行情概览</span>
+      <button class="chart-summary-toggle" id="toggleSummaryBtn">收起</button>
+    </div>
     <div class="stock-summary-table" id="stockSummaryTable"></div>
     <!-- Current stock info (detail view) -->
     <div class="stock-info" id="stockInfo">
@@ -73,7 +77,9 @@
       <span class="stock-price" id="stockPrice">--</span>
       <span class="stock-change" id="stockChange">--</span>
       <span class="stock-vol" id="stockVol">--</span>
+      <span class="chart-crosshair-info" id="chartCrosshairInfo">移动光标查看 OHLC</span>
     </div>
+    <div class="chart-legend" id="chartLegend"></div>
     <!-- Chart container -->
     <div id="chartContainer"></div>
   </div>
@@ -108,11 +114,29 @@
     </div>
     <div class="portfolio-view-toggle">
       <button class="toggle-btn active" data-view="list">列表</button>
-      <button class="toggle-btn" data-view="overlay">叠加K线</button>
+      <button class="toggle-btn" data-view="overlay">收益对比</button>
     </div>
     <div id="portfolioList" class="portfolio-list"></div>
     <div id="portfolioOverlay" class="portfolio-overlay" style="display:none">
+      <div class="overlay-toolbar">
+        <div>
+          <strong id="overlayTitle">持仓收益对比</strong>
+          <span class="hint" id="overlayMetricHint">按交易记录计算累计收益</span>
+        </div>
+        <select id="overlayMetric" title="选择对比口径">
+          <option value="holding">实际持仓收益</option>
+          <option value="price">价格表现</option>
+        </select>
+        <button class="secondary-btn" id="overlayRefreshBtn">刷新</button>
+      </div>
+      <div class="overlay-status" id="overlayStatus"></div>
       <div id="overlayChart"></div>
+      <div class="overlay-legend-tools">
+        <span>标的列表</span>
+        <span class="hint">点击名称高亮，点击圆点显示/隐藏</span>
+        <button class="overlay-clear-highlight" id="overlayClearHighlight">取消高亮</button>
+      </div>
+      <div class="overlay-legend" id="overlayLegend"></div>
     </div>
   </div>
 
@@ -217,6 +241,20 @@
             <input type="date" id="posDate">
           </div>
         </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>时间（可选）</label>
+            <input type="time" id="posTime">
+          </div>
+          <div class="form-group">
+            <label>手续费（可选）</label>
+            <input type="number" id="posCommission" min="0" step="0.01" placeholder="0.00">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>印花税（可选）</label>
+          <input type="number" id="posStampTax" min="0" step="0.01" placeholder="0.00">
+        </div>
         <div class="form-group">
           <label>备注</label>
           <input type="text" id="posNote" placeholder="可选备注...">
@@ -228,16 +266,31 @@
     <!-- Batch portfolio import -->
     <div id="batchPortfolioModal" class="modal" style="display:none">
       <div class="modal-header">
-        <h3>批量导入持仓</h3>
+        <h3>导入交易流水</h3>
         <button class="close-btn modal-close">&times;</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label>每行格式：股票代码 买入价 数量 [日期]（价格/数量可省略，后续手动补）</label>
-          <textarea id="batchPortfolioInput" rows="8" placeholder="600519 1800 100 2025-01-15&#10;00700 380 200 2025-03-20&#10;000858 150.5 300&#10;..."></textarea>
+          <label>支持复制券商成交表格后直接粘贴，也支持：代码 买/卖 价格 数量 日期 手续费 印花税 备注</label>
+          <textarea id="batchPortfolioInput" rows="7" placeholder="日期&#9;代码&#9;方向&#9;价格&#9;数量&#9;手续费&#9;印花税&#10;2025-01-15&#9;600519&#9;买入&#9;1800&#9;100&#9;5&#9;0&#10;&#10;也支持：600519 买入 1800 100 2025-01-15&#10;00700 380 200 2025-03-20"></textarea>
+          <div class="batch-file-row">
+            <label class="secondary-btn batch-file-btn" for="batchPortfolioFile">选择 CSV / TXT 文件</label>
+            <input type="file" id="batchPortfolioFile" accept=".csv,.tsv,.txt,text/csv,text/plain" style="display:none">
+            <span id="batchPortfolioFileName" class="hint"></span>
+          </div>
         </div>
         <div class="batch-status" id="batchPortfolioStatus"></div>
-        <button class="primary-btn" id="batchPortfolioSubmit">识别并导入</button>
+        <div id="batchPortfolioPreview" class="batch-portfolio-preview" style="display:none">
+          <div class="preview-title">导入预览（可直接修改）</div>
+          <div class="preview-table-wrap">
+            <table id="batchPortfolioPreviewTable"></table>
+          </div>
+        </div>
+        <div class="batch-import-actions">
+          <button class="secondary-btn" id="batchPortfolioReset" style="display:none">重新解析</button>
+          <button class="primary-btn" id="batchPortfolioSubmit">解析并预览</button>
+          <button class="primary-btn" id="batchPortfolioConfirm" style="display:none">确认导入</button>
+        </div>
       </div>
     </div>
 
@@ -282,6 +335,16 @@
             <option value="120" selected>120根</option>
             <option value="250">250根</option>
           </select>
+        </div>
+        <div class="form-group">
+          <label>图表时间时区</label>
+          <select id="timezoneMode">
+            <option value="exchange">交易所时间（推荐）</option>
+            <option value="local">浏览器本地时间</option>
+            <option value="custom">自定义时区</option>
+          </select>
+          <input type="text" id="timezone" placeholder="例如 Asia/Shanghai" style="margin-top:6px;display:none">
+          <div class="hint">分时横轴、十字光标和顶部市场时间使用此设置。</div>
         </div>
         <div class="form-group">
           <label>持仓汇总计价货币</label>
@@ -527,6 +590,7 @@
 
   <script src="lib/lightweight-charts.standalone.js"></script>
   <script src="js/storage.js"></script>
+  <script src="js/time.js"></script>
   <script src="js/api.js"></script>
   <script src="js/currency.js"></script>
   <script src="js/chart.js"></script>

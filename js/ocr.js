@@ -164,28 +164,104 @@ const OCR = {
 
   parseBatchPortfolio(text) {
     if (!text) return [];
-    const lines = text.split(/\n+/).map(s => s.trim()).filter(Boolean);
-    const results = [];
-    for (const line of lines) {
-      if (/^[\u4e00-\u9fa5\s]{2,10}$/.test(line) && !/\d{4,}/.test(line)) continue;
-      const parts = line.split(/[\s,\t]+/);
-      if (parts.length < 1) continue;
+    const lines = String(text).split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    if (!lines.length) return [];
 
-      // 解析 code（第一列）
-      const codeStr = parts[0];
-      const parsed = this.parseBatchCodes(codeStr);
+    const normalizeHeader = value => String(value || '')
+      .toLowerCase().replace(/[\s_()（）【】\[\]]/g, '');
+    const headerAliases = {
+      date: ['日期', '成交日期', '交易日期', 'date', 'tradedate'],
+      time: ['时间', '成交时间', '交易时间', 'time', 'tradetime'],
+      code: ['代码', '证券代码', '股票代码', '标的代码', 'code', 'symbol', 'ticker'],
+      direction: ['方向', '买卖', '买卖方向', '交易方向', '操作', 'direction', 'side', 'type'],
+      price: ['价格', '成交价', '成交价格', '买入价', '卖出价', 'price', '成交均价'],
+      quantity: ['数量', '成交数量', '委托数量', '股数', 'quantity', 'qty', 'volume'],
+      commission: ['手续费', '佣金', 'commission', 'fee'],
+      stampTax: ['印花税', 'stamp', 'stamptax', 'tax'],
+      note: ['备注', '说明', 'note', 'remark']
+    };
+    const findHeaderKey = value => {
+      const h = normalizeHeader(value);
+      for (const [key, aliases] of Object.entries(headerAliases)) {
+        if (aliases.some(alias => normalizeHeader(alias) === h)) return key;
+      }
+      return null;
+    };
+    const firstCells = lines[0].split(/\t|[,，]/).map(s => s.trim());
+    const headerMap = {};
+    firstCells.forEach((cell, index) => {
+      const key = findHeaderKey(cell);
+      if (key) headerMap[key] = index;
+    });
+    const hasHeader = headerMap.code !== undefined;
+    const start = hasHeader ? 1 : 0;
+    const results = [];
+    const today = typeof TimeUtils !== 'undefined'
+      ? TimeUtils.todayInputValue()
+      : new Date().toISOString().split('T')[0];
+
+    const parseNumber = value => {
+      const cleaned = String(value ?? '').replace(/[￥¥,，\s]/g, '');
+      if (!cleaned || cleaned === '-') return 0;
+      const n = Number(cleaned.replace(/[^\d.+-]/g, ''));
+      return Number.isFinite(n) ? n : 0;
+    };
+    const parseDirection = value => /卖|sell|sale|short|^s$|平仓/i.test(String(value || '')) ? 'sell' : 'buy';
+    const parseDate = value => {
+      const normalized = typeof TimeUtils !== 'undefined'
+        ? TimeUtils.normalizeDate(value)
+        : String(value || '').replace(/\//g, '-');
+      return normalized || today;
+    };
+    const isDateToken = value => {
+      const text = String(value || '').trim();
+      return /^\d{4}[-\/]\d{1,2}[-\/]\d{1,2}/.test(text) || /^\d{8}$/.test(text);
+    };
+
+    for (let lineIndex = start; lineIndex < lines.length; lineIndex++) {
+      const line = lines[lineIndex];
+      const parts = (line.includes('\t') || line.includes(','))
+        ? line.split(/\t|[,，]/).map(s => s.trim())
+        : line.split(/\s+/).map(s => s.trim());
+      if (!parts.length) continue;
+
+      const get = key => hasHeader ? parts[headerMap[key]] : undefined;
+      let codeValue = get('code');
+      const codeIndex = hasHeader ? headerMap.code : parts.findIndex(part => this.parseBatchCodes(part).length > 0);
+      if (codeIndex < 0 || !codeValue) codeValue = parts[codeIndex];
+      const parsed = this.parseBatchCodes(codeValue);
       if (!parsed.length) continue;
 
-      // 降级：price / quantity 可能缺失或无效，允许留空（默认 0）
-      const price = (parts.length >= 2) ? parseFloat(parts[1]) : 0;
-      const quantity = (parts.length >= 3) ? parseInt(parts[2]) : 0;
+      const directionRaw = hasHeader ? get('direction') : parts.find(p => /^(买|卖|buy|sell|b|s|买入|卖出)/i.test(p));
+      const direction = parseDirection(directionRaw);
+      const priceRaw = hasHeader ? get('price') : (() => {
+        const startIndex = codeIndex + (directionRaw ? 2 : 1);
+        return parts.slice(startIndex).find(p => /^[-+]?\d[\d,.]*(?:\.\d+)?$/.test(p)) || '';
+      })();
+      const priceIndex = parts.indexOf(priceRaw, codeIndex + 1);
+      const quantityRaw = hasHeader ? get('quantity') : parts[priceIndex >= 0 ? priceIndex + 1 : codeIndex + 2];
+      const dateIndex = parts.findIndex(isDateToken);
+      const dateRaw = hasHeader ? get('date') : (dateIndex >= 0 ? parts[dateIndex] : '');
+      const timeIndex = parts.findIndex(p => /^\d{1,2}:\d{2}(?::\d{2})?$/.test(p));
+      const timeRaw = hasHeader ? get('time') : (timeIndex >= 0 ? parts[timeIndex] : '');
+      const tailIndex = timeIndex >= 0 ? timeIndex + 1 : (dateIndex >= 0 ? dateIndex + 1 : priceIndex + 2);
+      const commissionRaw = hasHeader ? get('commission') : parts[tailIndex];
+      const stampTaxRaw = hasHeader ? get('stampTax') : parts[tailIndex + 1];
+      const noteRaw = hasHeader ? get('note') : parts.slice(tailIndex + 2).join(' ');
 
-      const dateRaw = parts[3];
-      const date = dateRaw && /^\d{4}[-/]?\d{1,2}[-/]?\d{1,2}/.test(dateRaw)
-        ? dateRaw.replace(/\//g, '-')
-        : new Date().toISOString().split('T')[0];
-      const note = parts.slice(4).join(' ');
-      results.push({ ...parsed[0], price: isNaN(price) ? 0 : price, quantity: isNaN(quantity) ? 0 : quantity, date, note, direction: 'buy' });
+      results.push({
+        ...parsed[0],
+        direction,
+        price: parseNumber(priceRaw),
+        quantity: parseNumber(quantityRaw),
+        date: parseDate(dateRaw),
+        time: String(timeRaw || '').trim(),
+        commission: parseNumber(commissionRaw),
+        stampTax: parseNumber(stampTaxRaw),
+        note: String(noteRaw || '').trim(),
+        sourceLine: lineIndex + 1,
+        raw: line
+      });
     }
     return results;
   }
