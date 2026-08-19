@@ -66,19 +66,56 @@ const DB = {
     return { watchlist, portfolio, settings, currentStock, stockGroups };
   },
 
-  async exportAll() {
+  async exportAll(options = {}) {
     const data = await this.getAll();
     const userSkills = await this.get('userSkills', []);
-    return JSON.stringify({ ...data, userSkills }, null, 2);
+    const settings = { ...(data.settings || {}) };
+    const sensitiveKeys = ['llmApiKey', 'tushareToken', 'juheKey', 'baiduApiKey', 'baiduSecretKey'];
+    if (!options.includeSecrets) {
+      for (const key of sensitiveKeys) delete settings[key];
+    }
+    return JSON.stringify({ ...data, settings, userSkills }, null, 2);
   },
 
   async importAll(jsonStr) {
     const data = JSON.parse(jsonStr);
-    if (data.watchlist) await this.set('watchlist', data.watchlist);
-    if (data.portfolio) await this.set('portfolio', data.portfolio);
-    if (data.settings) await this.set('settings', data.settings);
-    if (data.currentStock) await this.set('currentStock', data.currentStock);
-    if (data.userSkills) await this.set('userSkills', data.userSkills);
-    if (data.stockGroups) await this.set('stockGroups', data.stockGroups);
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('备份文件格式无效');
+    if (Object.prototype.hasOwnProperty.call(data, 'watchlist')) {
+      if (!Array.isArray(data.watchlist)) throw new Error('watchlist 必须是数组');
+      await this.set('watchlist', data.watchlist);
+    }
+    if (Object.prototype.hasOwnProperty.call(data, 'portfolio')) {
+      if (!Array.isArray(data.portfolio)) throw new Error('portfolio 必须是数组');
+      await this.set('portfolio', data.portfolio);
+    }
+    if (Object.prototype.hasOwnProperty.call(data, 'settings')) {
+      if (!data.settings || typeof data.settings !== 'object' || Array.isArray(data.settings)) {
+        throw new Error('settings 格式无效');
+      }
+      // 不含密钥的安全备份不会抹掉本机已有密钥；完整备份中的密钥仍会按文件恢复。
+      const currentSettings = await this.get('settings', {});
+      await this.set('settings', { ...currentSettings, ...data.settings });
+    }
+    if (Object.prototype.hasOwnProperty.call(data, 'currentStock')) await this.set('currentStock', data.currentStock || null);
+    if (Object.prototype.hasOwnProperty.call(data, 'userSkills')) {
+      if (!Array.isArray(data.userSkills)) throw new Error('userSkills 必须是数组');
+      await this.set('userSkills', data.userSkills);
+    }
+    if (Object.prototype.hasOwnProperty.call(data, 'stockGroups')) {
+      if (!Array.isArray(data.stockGroups)) throw new Error('stockGroups 必须是数组');
+      await this.set('stockGroups', data.stockGroups);
+    }
+  },
+
+  async clearAll() {
+    if (this._useChrome) {
+      return new Promise(resolve => chrome.storage.local.clear(resolve));
+    }
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('sp_')) keys.push(key);
+    }
+    keys.forEach(key => localStorage.removeItem(key));
   },
 };

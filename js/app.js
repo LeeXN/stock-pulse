@@ -1,5 +1,5 @@
 /**
- * app.js v1.1.0 - 主控制器（多股图表、批量/OCR导入、Side Panel）
+ * app.js v1.2.1 - 主控制器（多股图表、批量/OCR导入、Side Panel）
  */
 (async function () {
   'use strict';
@@ -36,9 +36,12 @@
     marketTimer: null,
     quotes: {},
     _klineCache: {},          // 缓存最近一次 K 线数据，供指标切换时复用
+    _klineCacheByPeriod: {},  // 按标的和周期保存最后一次成功数据，失败时回退
     _chartRequestSeq: 0,
     _loadingChart: false,     // 防止并发 loadChart
     _lastChartKey: '',
+    _chartStatus: '',
+    _quoteStatus: '',
     _overlayRequestSeq: 0,
     _overlayKlineCache: {},
     overlayMode: 'holding',
@@ -147,6 +150,24 @@
     return formatAmountByCurrency(0, currency, digits, fallback);
   }
 
+  function isValidDateInput(value) {
+    const text = String(value || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+    if (typeof TimeUtils !== 'undefined') return TimeUtils.normalizeDate(text) === text;
+    const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return false;
+    const date = new Date(Date.UTC(Number(match[1]), Number(match[2]), 0));
+    return Number(match[3]) >= 1 && Number(match[3]) <= date.getUTCDate();
+  }
+
+  function makeImportDedupeKey(row, fullCode) {
+    return [
+      'batch', fullCode, row.sourceLine || '', row.direction || '', row.price || '',
+      row.quantity || '', row.date || '', row.time || '', row.commission || 0,
+      row.stampTax || 0, row.note || ''
+    ].map(value => String(value).trim()).join('|');
+  }
+
   function toggleSort(page, key) {
     const s = state.sort[page];
     if (s.key === key) {
@@ -164,6 +185,11 @@
     state.portfolio = stored.portfolio || [];
     state.stockGroups = stored.stockGroups || [];
     state.settings = { ...state.settings, ...stored.settings };
+    if (!stored.settings || !Object.prototype.hasOwnProperty.call(stored.settings, 'llmVisionModel')) {
+      const preset = LLM.getPreset(state.settings.llmProvider);
+      state.settings.llmVisionModel = preset ? (preset.visionModel || '') : '';
+      await DB.set('settings', state.settings);
+    }
     const changedSettings = {};
     if (typeof MarketAPI !== 'undefined') {
       const rawMarketIndices = state.settings.marketIndices || MarketAPI.DEFAULT_SELECTED;
@@ -280,6 +306,7 @@
     }
     renderChartChips();
     renderStockSummaryTable();
+    if (!state.currentStock) clearStockDisplay();
   }
 
   function renderChartChips() {
@@ -502,8 +529,9 @@
           } else {
             cell.textContent = '';
           }
-        } catch (_) {
-          cell.textContent = '';
+        } catch (err) {
+          cell.textContent = '不可用';
+          cell.title = err.message || 'K线请求失败';
         }
         // Small delay between requests to be nice to the API
         await new Promise(r => setTimeout(r, 200));
@@ -547,7 +575,7 @@
       try {
         klines = await StockAPI.getKline(stock.fullCode, 'daily', 30);
         state._klineCache[stock.fullCode] = klines;
-      } catch (_) { cell.textContent = ''; return; }
+      } catch (err) { cell.textContent = '不可用'; cell.title = err.message || 'K线请求失败'; return; }
     }
     if (!klines || klines.length < 2) { cell.textContent = ''; return; }
     renderSparklineSVG(cell, klines);
@@ -556,9 +584,14 @@
   async function refreshChartQuotes() {
     if (!state.chartStocks.length) return;
     const codes = state.chartStocks.map(s => s.fullCode);
+    state._quoteStatus = '';
     try {
       const quotes = await StockAPI.getQuotes(codes);
       state.quotes = { ...state.quotes, ...quotes };
+      if (state.currentStock && quotes[state.currentStock.fullCode]) {
+        updateStockDisplay(quotes[state.currentStock.fullCode]);
+      }
+      if (Object.keys(quotes).length < codes.length) state._quoteStatus = '部分行情暂不可用';
       for (const stock of state.chartStocks) {
         const q = quotes[stock.fullCode];
         if (q && q.name) stock.name = q.name;
@@ -571,6 +604,7 @@
         renderStockSummaryTable();
       }
     } catch (e) {
+      state._quoteStatus = '行情请求失败';
       console.warn('[refreshChartQuotes] failed:', e);
     }
   }
@@ -623,9 +657,9 @@
           if (requestId !== state._chartRequestSeq) return;
           if (!data.points || data.points.length === 0) {
             console.warn('[loadChart] realtime data empty for', fullCode);
-            document.getElementById('stockName').textContent = `${currentStock.name || fullCode} — 无分时数据（可能已休市）`;
+            state._chartStatus = '无分时数据（可能已休市）';
           } else {
-            document.getElementById('stockName').textContent = currentStock.name || fullCode;
+            state._chartStatus = '';
           }
           ChartManager.renderRealtime(data, {
             market: currentStock.market,
@@ -633,13 +667,27 @@
             preserveRange
           });
         } else {
-          const klines = await StockAPI.getKline(fullCode, state.currentPeriod, state.settings.klineCount);
-          if (requestId !== state._chartRequestSeq) return;
-          if (!klines || klines.length === 0) {
-            console.warn('[loadChart] kline data empty for', fullCode, 'period:', state.currentPeriod);
-            document.getElementById('stockName').textContent = `${currentStock.name || fullCode} — 无K线数据`;
+          const cacheKey = `${fullCode}:${state.currentPeriod}`;
+          let klines = [];
+          let status = '';
+          try {
+            const fetched = await StockAPI.getKline(fullCode, state.currentPeriod, state.settings.klineCount);
+            if (requestId !== state._chartRequestSeq) return;
+            if (Array.isArray(fetched) && fetched.length > 0) {
+              klines = fetched;
+              state._klineCacheByPeriod[cacheKey] = fetched;
+              state._klineCache[fullCode] = fetched;
+            } else {
+              klines = state._klineCacheByPeriod[cacheKey] || [];
+              status = klines.length ? '行情暂不可用，显示上次成功数据' : '暂无K线数据，可切换数据源或稍后重试';
+            }
+          } catch (err) {
+            if (requestId !== state._chartRequestSeq) return;
+            console.warn('[loadChart] kline fetch failed:', err);
+            klines = state._klineCacheByPeriod[cacheKey] || [];
+            status = klines.length ? '行情暂不可用，显示上次成功数据' : `K线加载失败：${err.message || '请求失败'}`;
           }
-          state._klineCache[fullCode] = klines;
+          state._chartStatus = status;
           const pos = state.portfolio.find(p => p.fullCode === fullCode);
           const trades = pos ? pos.trades : [];
           ChartManager.renderKline(klines, trades, {
@@ -653,7 +701,7 @@
       } catch (err) {
         if (requestId !== state._chartRequestSeq) return;
         console.error('[loadChart] error:', err);
-        document.getElementById('stockName').textContent = `加载失败: ${err.message}`;
+        state._chartStatus = `加载失败：${err.message || '请求失败'}`;
       }
 
       try {
@@ -680,7 +728,8 @@
   }
 
   function updateStockDisplay(q) {
-    document.getElementById('stockName').textContent = `${q.name} (${q.code})`;
+    const baseName = `${q.name || state.currentStock?.name || q.code || ''} (${q.code || state.currentStock?.code || ''})`;
+    document.getElementById('stockName').textContent = state._chartStatus ? `${baseName} · ${state._chartStatus}` : baseName;
     const priceEl = document.getElementById('stockPrice');
     priceEl.textContent = formatPrice(q.price, q.market);
     const sign = q.change >= 0 ? '+' : '';
@@ -694,6 +743,7 @@
 
   function showStockInfo(stock) {
     state.currentStock = stock;
+    state._chartStatus = '';
     DB.set('currentStock', stock);
     ChartManager.setTimeContext(stock && stock.market, state.settings);
     updateMarketTime();
@@ -704,24 +754,55 @@
 
   function clearStockDisplay() {
     state.currentStock = null;
+    state._chartStatus = '';
     document.getElementById('stockName').textContent = '--';
     document.getElementById('stockPrice').textContent = '--';
     document.getElementById('stockChange').textContent = '--';
     document.getElementById('stockVol').textContent = '';
+    if (ChartManager && typeof ChartManager.clearMain === 'function') ChartManager.clearMain();
     updateMarketTime();
   }
 
   // ===== Search Helper =====
   function bindSearch(inputEl, resultsEl, onSelect) {
     let timer = null;
+    let latestResults = [];
     inputEl.addEventListener('input', () => {
       clearTimeout(timer);
+      latestResults = [];
       const val = inputEl.value.trim();
       if (!val) { resultsEl.classList.remove('show'); return; }
       timer = setTimeout(async () => {
-        const results = await StockAPI.search(val);
-        renderSearchResults(resultsEl, results, onSelect);
+        try {
+          latestResults = await StockAPI.search(val);
+          renderSearchResults(resultsEl, latestResults, onSelect);
+        } catch (err) {
+          latestResults = [];
+          resultsEl.replaceChildren();
+          resultsEl.classList.remove('show');
+          inputEl.title = err.message || '搜索失败';
+        }
       }, 300);
+    });
+    inputEl.addEventListener('keydown', async (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      const value = inputEl.value.trim();
+      if (!value) return;
+      let selected = latestResults[0];
+      if (!selected) {
+        try {
+          const results = await StockAPI.search(value);
+          selected = results[0];
+        } catch (err) {
+          inputEl.title = err.message || '搜索失败';
+          return;
+        }
+      }
+      if (selected) {
+        onSelect(selected);
+        resultsEl.classList.remove('show');
+      }
     });
     inputEl.addEventListener('blur', () => {
       setTimeout(() => resultsEl.classList.remove('show'), 200);
@@ -810,6 +891,8 @@
   }
 
   async function removeFromWatchlist(fullCode) {
+    const stock = state.watchlist.find(w => w.fullCode === fullCode);
+    if (stock && !confirm(`确定删除自选股「${stock.name || stock.code}」？`)) return;
     state.watchlist = state.watchlist.filter(w => w.fullCode !== fullCode);
     await DB.set('watchlist', state.watchlist);
     if (state.chartSource === 'watchlist') await rebuildChartChips();
@@ -841,7 +924,14 @@
       return;
     }
     const codes = stocks.map(w => w.fullCode);
-    const quotes = await StockAPI.getQuotes(codes);
+    let quotes = {};
+    let quoteError = '';
+    try {
+      quotes = await StockAPI.getQuotes(codes);
+    } catch (err) {
+      quoteError = err.message || '行情请求失败';
+      console.warn('[Watchlist] quote request failed:', err);
+    }
     state.quotes = { ...state.quotes, ...quotes };
     // 排序
     const s = state.sort.watchlist;
@@ -884,8 +974,9 @@
       nameEl.title = '点击跳转东财';
       nameEl.textContent = q.name || stock.name;
       const priceEl = document.createElement('span');
-      priceEl.className = `wl-price ${cls}`;
-      priceEl.textContent = q.price ? formatPrice(q.price, q.market) : '--';
+      priceEl.className = `wl-price ${cls}${q.price ? '' : ' quote-missing'}`;
+      priceEl.textContent = q.price ? formatPrice(q.price, q.market) : (quoteError ? '请求失败' : '暂无数据');
+      if (!q.price) priceEl.title = quoteError || '该标的没有返回行情数据';
       const changeEl = document.createElement('span');
       changeEl.className = `wl-change ${cls}`;
       changeEl.textContent = q.price ? formatChange(change) : '--';
@@ -902,6 +993,18 @@
       delBtn.title = '删除';
       delBtn.textContent = '×';
       actionsEl.appendChild(jumpBtn);
+      if (!q.price) {
+        const retryBtn = document.createElement('button');
+        retryBtn.className = 'wl-action wl-retry';
+        retryBtn.title = '重试行情';
+        retryBtn.textContent = '↻';
+        retryBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          retryBtn.disabled = true;
+          await renderWatchlist();
+        });
+        actionsEl.appendChild(retryBtn);
+      }
       actionsEl.appendChild(delBtn);
 
       row.appendChild(codeEl);
@@ -949,10 +1052,15 @@
         list.appendChild(empty);
         await renderPortfolioSummary([]);
         return;
-      }
+    }
 
     const codes = state.portfolio.map(p => p.fullCode);
-    const quotes = await StockAPI.getQuotes(codes);
+    let quotes = {};
+    try {
+      quotes = await StockAPI.getQuotes(codes);
+    } catch (err) {
+      console.warn('[Portfolio] quote request failed:', err);
+    }
     state.quotes = { ...state.quotes, ...quotes };
 
     // 排序
@@ -1050,6 +1158,14 @@
       delBtn.setAttribute('data-code', pos.fullCode);
       delBtn.textContent = '删除';
       actions.appendChild(delBtn);
+      if (!q.price) {
+        const retryBtn = document.createElement('button');
+        retryBtn.className = 'retry-quote';
+        retryBtn.setAttribute('data-code', pos.fullCode);
+        retryBtn.textContent = '重试行情';
+        retryBtn.title = '重新请求当前标的行情';
+        actions.appendChild(retryBtn);
+      }
 
       const tradesWrap = document.createElement('div');
       tradesWrap.className = 'pos-trades';
@@ -1067,6 +1183,8 @@
       card.querySelector('.add-trade').addEventListener('click', () => openPositionModal(pos));
       card.querySelector('.show-trades').addEventListener('click', () => toggleTrades(pos));
       card.querySelector('.pos-jump').addEventListener('click', () => jumpToEastmoney(pos));
+      const retryQuote = card.querySelector('.retry-quote');
+      if (retryQuote) retryQuote.addEventListener('click', () => renderPortfolio());
       card.querySelector('.del-pos').addEventListener('click', async () => {
         if (confirm(`确认删除 ${pos.name} 的所有记录？`)) {
           state.portfolio = await Portfolio.deletePosition(pos.fullCode);
@@ -1160,8 +1278,9 @@
         row.className = 'pos-trade-row';
         const qtyUnit = pos.market === 'CRYPTO' ? '币' : '股';
         const tradeDate = `${t.date || '--'}${t.time ? ' ' + t.time : ''}`;
-        row.innerHTML = `<span class="${cls}">${t.direction==='buy'?'买':'卖'}</span><span>${tradeDate}</span><span>${t.price}</span><span>${t.quantity}${qtyUnit}</span><span>费:${Number(t.commission || 0).toFixed(2)} 税:${Number(t.stampTax || 0).toFixed(2)}</span><span>${t.note||''}</span><button class="wl-del">&times;</button>`;
+        row.innerHTML = `<span class="${cls}">${t.direction==='buy'?'买':'卖'}</span><span>${escapeHtml(tradeDate)}</span><span>${escapeHtml(t.price)}</span><span>${escapeHtml(t.quantity)}${qtyUnit}</span><span>费:${Number(t.commission || 0).toFixed(2)} 税:${Number(t.stampTax || 0).toFixed(2)}</span><span>${escapeHtml(t.note || '')}</span><button class="wl-del">&times;</button>`;
         row.querySelector('.wl-del').addEventListener('click', async () => {
+          if (!confirm(`确定删除 ${tradeDate} 的这笔交易？`)) return;
           state.portfolio = await Portfolio.deleteTrade(pos.fullCode, t.id);
           renderPortfolio();
         });
@@ -1507,10 +1626,10 @@
       const card = document.createElement('label');
       card.className = 'ai-skill-card';
       card.innerHTML = `
-        <input type="radio" name="ai-skill" value="${s.id}" ${skills.indexOf(s) === 0 ? 'checked' : ''}>
+        <input type="radio" name="ai-skill" value="${escapeHtml(s.id)}" ${skills.indexOf(s) === 0 ? 'checked' : ''}>
         <div>
-          <div class="ai-skill-name">${s.name}${s.builtin ? ' <span class="badge">内置</span>' : ''}</div>
-          <div class="ai-skill-desc">${s.description || ''}</div>
+          <div class="ai-skill-name">${escapeHtml(s.name)}${s.builtin ? ' <span class="badge">内置</span>' : ''}</div>
+          <div class="ai-skill-desc">${escapeHtml(s.description || '')}</div>
         </div>
       `;
       list.appendChild(card);
@@ -1594,7 +1713,7 @@
     for (const s of skills) {
       const card = document.createElement('div');
       card.className = 'skill-card';
-      const licenseTag = s.license ? ` <span class="badge badge-license">${s.license}</span>` : '';
+      const licenseTag = s.license ? ` <span class="badge badge-license">${escapeHtml(s.license)}</span>` : '';
       const isOverride = userOverrideIds.has(s.id);
       const badge = s.builtin ? ' <span class="badge">内置</span>'
         : isOverride ? ' <span class="badge" style="background:#e67e22">已修改</span>'
@@ -1605,10 +1724,10 @@
           <div class="skill-card-desc">${escapeHtml(s.description || '')}</div>
         </div>
         <div class="skill-card-actions">
-          <button class="secondary-btn skill-copy" data-id="${s.id}" title="复制为 SKILL.md">📋 复制</button>
-          <button class="secondary-btn skill-edit" data-id="${s.id}">编辑</button>
-          ${isOverride ? '<button class="secondary-btn skill-reset" data-id="' + s.id + '" title="恢复内置默认">重置</button>' : ''}
-          ${s.builtin ? '' : '<button class="danger-btn skill-del" data-id="' + s.id + '">删除</button>'}
+          <button class="secondary-btn skill-copy" data-id="${escapeHtml(s.id)}" title="复制为 SKILL.md">📋 复制</button>
+          <button class="secondary-btn skill-edit" data-id="${escapeHtml(s.id)}">编辑</button>
+          ${isOverride ? '<button class="secondary-btn skill-reset" data-id="' + escapeHtml(s.id) + '" title="恢复内置默认">重置</button>' : ''}
+          ${s.builtin ? '' : '<button class="danger-btn skill-del" data-id="' + escapeHtml(s.id) + '">删除</button>'}
         </div>
       `;
       card.querySelector('.skill-copy').addEventListener('click', () => copySkillAsMarkdown(s.id));
@@ -1811,8 +1930,11 @@
   }
 
   function openPositionModal(existingPos) {
+    const searchEl = document.getElementById('posStockSearch');
+    delete searchEl.dataset.stock;
+    const market = existingPos?.market || 'SH';
     document.getElementById('posDate').value = typeof TimeUtils !== 'undefined'
-      ? TimeUtils.todayInputValue()
+      ? TimeUtils.todayInputValue(TimeUtils.getExchangeTimeZone(market))
       : new Date().toISOString().split('T')[0];
     document.getElementById('posPrice').value = '';
     document.getElementById('posQuantity').value = '';
@@ -1865,9 +1987,9 @@
       }
       if (match) {
         resolved.push(match);
-        statusEl.innerHTML += `<br><span class="ok">+ ${match.name} (${match.code})</span>`;
+        statusEl.innerHTML += `<br><span class="ok">+ ${escapeHtml(match.name)} (${escapeHtml(match.code)})</span>`;
       } else {
-        statusEl.innerHTML += `<br><span class="err">? ${p.value} 未找到</span>`;
+        statusEl.innerHTML += `<br><span class="err">? ${escapeHtml(p.value)} 未找到</span>`;
       }
     }
     if (resolved.length) {
@@ -1913,9 +2035,8 @@
           // 搜索接口按代码/名称返回结果；不要把内部的 SH:600519 格式直接传给它。
           const searchValue = parsed ? parsed.code : code;
           const results = await StockAPI.search(searchValue);
-          const match = parsed
-            ? (results.find(r => r.fullCode === parsed.fullCode) || results.find(r => r.code === parsed.code) || results[0])
-            : results[0];
+          // 已识别出市场时，只接受同市场结果，避免股票搜索失败后误选同数字代码的加密货币交易对。
+          const match = StockAPI.matchSearchResult(parsed, results);
           matches[code] = match || null;
         } catch (_) {
           matches[code] = null;
@@ -2041,9 +2162,9 @@
     state.batchPortfolioRows = await resolveBatchPortfolioRows(parsed);
     renderBatchPortfolioPreview(state.batchPortfolioRows);
     const found = state.batchPortfolioRows.filter(row => row.match).length;
-    const invalid = state.batchPortfolioRows.filter(row => !row.price || !row.quantity).length;
+    const invalid = state.batchPortfolioRows.filter(row => !row.price || !row.quantity || !isValidDateInput(row.date)).length;
     statusEl.innerHTML = `识别到 <b>${state.batchPortfolioRows.length}</b> 条记录，已匹配 ${found} 条。` +
-      (invalid ? ` <span class="warn">${invalid} 条价格/数量待补</span>，修改预览后再确认。` : ' 请核对后确认导入。');
+      (invalid ? ` <span class="warn">${invalid} 条价格、数量或日期待修正</span>，修改预览后再确认。` : ' 请核对后确认导入。');
     submitBtn.style.display = 'none';
     confirmBtn.style.display = '';
     resetBtn.style.display = '';
@@ -2057,16 +2178,18 @@
     confirmBtn.disabled = true;
     statusEl.textContent = '正在重新校验标的...';
     await resolveBatchPortfolioRows(rows);
-    const invalid = rows.filter(row => !row.match || !row.price || !row.quantity || !row.date || !['buy', 'sell'].includes(row.direction));
+    const invalid = rows.filter(row => !row.match || !Number.isFinite(Number(row.price)) || Number(row.price) <= 0 ||
+      !Number.isFinite(Number(row.quantity)) || Number(row.quantity) <= 0 || !isValidDateInput(row.date) ||
+      !Number.isFinite(Number(row.commission || 0)) || Number(row.commission || 0) < 0 ||
+      !Number.isFinite(Number(row.stampTax || 0)) || Number(row.stampTax || 0) < 0 ||
+      !['buy', 'sell'].includes(row.direction));
     if (invalid.length) {
       renderBatchPortfolioPreview(rows);
-      statusEl.innerHTML = `<span class="err">有 ${invalid.length} 条记录无法导入：请检查标的、价格和数量。</span>`;
+      statusEl.innerHTML = `<span class="err">有 ${invalid.length} 条记录无法导入：请检查标的、价格、数量、日期和费用。</span>`;
       confirmBtn.disabled = false;
       return;
     }
-    let imported = 0;
-    for (const row of rows) {
-      await Portfolio.addTrade({
+    const trades = rows.map(row => ({
         fullCode: row.match.fullCode,
         code: row.match.code,
         name: row.match.name,
@@ -2078,14 +2201,23 @@
         time: row.time,
         commission: Number(row.commission) || 0,
         stampTax: Number(row.stampTax) || 0,
-        note: row.note
-      });
-      imported++;
+        note: row.note,
+        sourceLine: row.sourceLine,
+        dedupeKey: makeImportDedupeKey(row, row.match.fullCode)
+    }));
+    let result;
+    try {
+      result = await Portfolio.addTrades(trades);
+    } catch (err) {
+      statusEl.innerHTML = `<span class="err">导入未写入任何记录：${escapeHtml(err.message || '交易校验失败')}</span>`;
+      confirmBtn.disabled = false;
+      return;
     }
-    state.portfolio = await DB.get('portfolio', []);
+    state.portfolio = result.portfolio;
     if (state.chartSource === 'portfolio') await rebuildChartChips();
     if (state.currentTab === 'portfolio') await renderPortfolio();
-    statusEl.innerHTML = `<span class="ok">已成功导入 ${imported} 条交易记录。</span> 可直接关闭窗口。`;
+    statusEl.innerHTML = `<span class="ok">已导入 ${result.added} 条交易记录。</span>` +
+      (result.duplicates ? ` 跳过 ${result.duplicates} 条重复记录。` : '') + ' 可直接关闭窗口。';
     confirmBtn.disabled = false;
   }
 
@@ -2132,12 +2264,14 @@
       }, target);
 
       fillEl.style.width = '100%';
-      const conf = Math.round(result.confidence || 0);
+      const confidenceLabel = Number.isFinite(result.confidence)
+        ? `置信度 ${Math.round(result.confidence)}%`
+        : '结果需要人工核对';
       const isPortfolio = target === 'portfolio';
       const countLabel = isPortfolio
         ? `${result.text.split('\n').filter(l => l.trim()).length} 行数据`
         : `${result.codes.length} 个代码`;
-      textEl.textContent = `识别完成（大模型视觉，置信度 ${conf}%，共 ${countLabel}）`;
+      textEl.textContent = `识别完成（大模型视觉，${confidenceLabel}，共 ${countLabel}）`;
       statusEl.textContent = '引擎就绪（大模型视觉）';
       statusEl.classList.remove('err');
 
@@ -2209,7 +2343,8 @@
     if (interval > 0) {
       state.refreshTimer = setInterval(async () => {
         if (state.currentTab === 'chart') {
-          if (state.currentStock) await loadChart();
+          // 历史 K 线不需要随每次报价刷新重复请求；分时图才需要重新拉取。
+          if (state.currentStock && state.currentPeriod === 'realtime') await loadChart();
           await refreshChartQuotes();
         }
         else if (state.currentTab === 'watchlist') {
@@ -2287,6 +2422,8 @@
   function toggleProviderFields() {
     const quoteCur = document.getElementById('quoteProvider') && document.getElementById('quoteProvider').value;
     const klineCur = document.getElementById('klineProvider') && document.getElementById('klineProvider').value;
+    const intlQuoteCur = document.getElementById('intlQuoteProvider') && document.getElementById('intlQuoteProvider').value;
+    const intlKlineCur = document.getElementById('intlKlineProvider') && document.getElementById('intlKlineProvider').value;
     document.querySelectorAll('.provider-only, .token-field').forEach(el => {
       const supported = (el.dataset.providers || el.dataset.tokenProviders || '').split(',').filter(Boolean);
       const isDataField = supported.some(p => p === 'tushare' || p === 'juhe');
@@ -2294,7 +2431,8 @@
         el.style.display = 'none';
         return;
       }
-      const visible = (quoteCur && supported.includes(quoteCur)) || (klineCur && supported.includes(klineCur));
+      const visible = (quoteCur && supported.includes(quoteCur)) || (klineCur && supported.includes(klineCur)) ||
+        (intlQuoteCur && supported.includes(intlQuoteCur)) || (intlKlineCur && supported.includes(intlKlineCur));
       el.style.display = visible ? '' : 'none';
     });
   }
@@ -2330,7 +2468,7 @@
     const intlQuoteSel = document.getElementById('intlQuoteProvider');
     const intlKlineSel = document.getElementById('intlKlineProvider');
 
-    const fillOpts = (sel, cap, addDefault) => {
+    const fillOpts = (sel, cap, addDefault, marketScope) => {
       if (!sel) return;
       const cur = sel.value;
       sel.innerHTML = '';
@@ -2339,7 +2477,7 @@
         opt0.value = ''; opt0.textContent = '跟随上方设置';
         sel.appendChild(opt0);
       }
-      providers.filter(p => p.caps[cap]).forEach(p => {
+      providers.filter(p => p.caps[cap] && (!marketScope || (p.markets || []).includes(marketScope))).forEach(p => {
         const opt = document.createElement('option');
         opt.value = p.id;
         opt.textContent = p.label + (p.requires.length ? ' · 需 ' + p.requires.join('/') : '');
@@ -2347,12 +2485,14 @@
       });
       // 恢复当前值（如果还存在），否则 fallback 到第一个
       if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+      else if (!addDefault && sel.options.length) sel.value = sel.options[0].value;
     };
 
-    fillOpts(quoteSel, 'quote', false);
-    fillOpts(klineSel, 'kline', false);
-    fillOpts(intlQuoteSel, 'quote', true);
-    fillOpts(intlKlineSel, 'kline', true);
+    fillOpts(quoteSel, 'quote', false, 'domestic');
+    fillOpts(klineSel, 'kline', false, 'domestic');
+    fillOpts(intlQuoteSel, 'quote', true, 'intl');
+    fillOpts(intlKlineSel, 'kline', true, 'intl');
+    toggleProviderFields();
   }
 
   /**
@@ -2367,6 +2507,62 @@
     } else if (state.currentTab === 'portfolio') {
       await renderPortfolio();
     }
+  }
+
+  async function reloadRuntimeFromStorage() {
+    const stored = await DB.getAll();
+    state.watchlist = stored.watchlist || [];
+    state.portfolio = stored.portfolio || [];
+    state.stockGroups = stored.stockGroups || [];
+    state.settings = { ...state.settings, ...(stored.settings || {}) };
+    if (!stored.settings || !Object.prototype.hasOwnProperty.call(stored.settings, 'llmVisionModel')) {
+      const preset = LLM.getPreset(state.settings.llmProvider);
+      state.settings.llmVisionModel = preset ? (preset.visionModel || '') : '';
+    }
+    state.indicators = { ...state.indicators, ...(state.settings.indicators || {}) };
+    document.querySelectorAll('.ind-btn[data-ind]').forEach(btn => {
+      btn.classList.toggle('active', !!state.indicators[btn.dataset.ind]);
+    });
+    state.currentStock = stored.currentStock || null;
+    state.chartStocks = [];
+    state.quotes = {};
+    state._klineCache = {};
+    state._klineCacheByPeriod = {};
+    state._overlayKlineCache = {};
+    state._lastChartKey = '';
+
+    StockAPI.init(state.settings);
+    OCR.init(state.settings);
+    LLM.init(state.settings);
+    refreshOCRAvailability();
+    applyTheme(state.settings.theme);
+    applyAccentColor(state.settings.accentColor || '#4fc3f7');
+    fillProviderDropdowns();
+    for (const [id, key] of [
+      ['quoteProvider', 'quoteProvider'], ['klineProvider', 'klineProvider'],
+      ['intlQuoteProvider', 'intlQuoteProvider'], ['intlKlineProvider', 'intlKlineProvider']
+    ]) {
+      const el = document.getElementById(id);
+      if (el && state.settings[key] != null) el.value = state.settings[key];
+    }
+    renderGroupFilterBar();
+    await rebuildChartChips();
+
+    if (state.currentStock) {
+      showStockInfo(state.currentStock);
+      await loadChart();
+    } else if (state.chartStocks.length) {
+      showStockInfo(state.chartStocks[0]);
+      await loadChart();
+    } else {
+      clearStockDisplay();
+    }
+    if (state.currentTab === 'watchlist') await renderWatchlist();
+    if (state.currentTab === 'portfolio') await renderPortfolio();
+    await refreshChartQuotes();
+    startAutoRefresh();
+    startMarketRefresh();
+    refreshMarketBar();
   }
 
   // ===== 跳转东方财富 =====
@@ -2624,6 +2820,8 @@
         if (state.currentStock) {
           showStockInfo(state.currentStock);
           loadChart();
+        } else {
+          clearStockDisplay();
         }
       });
     });
@@ -2747,30 +2945,47 @@
 
     // Save position
     document.getElementById('savePositionBtn').addEventListener('click', async () => {
-      const fullCode = document.getElementById('posStockCode').value;
+      const fullCode = document.getElementById('posStockCode').value.trim().toUpperCase();
       if (!fullCode) { alert('请先选择标的'); return; }
       const price = parseFloat(document.getElementById('posPrice').value);
       const quantity = parseFloat(document.getElementById('posQuantity').value);
-      if (!price || !quantity) { alert('请输入价格和数量'); return; }
+      const date = document.getElementById('posDate').value;
+      const commission = parseFloat(document.getElementById('posCommission').value || '0');
+      const stampTax = parseFloat(document.getElementById('posStampTax').value || '0');
+      if (!Number.isFinite(price) || price <= 0) { alert('价格必须大于 0'); return; }
+      if (!Number.isFinite(quantity) || quantity <= 0) { alert('数量必须大于 0'); return; }
+      if (!isValidDateInput(date)) { alert('请输入有效的交易日期'); return; }
+      if (!Number.isFinite(commission) || commission < 0 || !Number.isFinite(stampTax) || stampTax < 0) {
+        alert('手续费和印花税不能为负数'); return;
+      }
       let stockData;
       const searchEl = document.getElementById('posStockSearch');
       if (searchEl.dataset.stock) {
-        stockData = JSON.parse(searchEl.dataset.stock);
-      } else {
-        const pos = state.portfolio.find(p => p.fullCode === fullCode);
-        stockData = pos || { fullCode, code: fullCode.split(':')[1], name: '', market: fullCode.split(':')[0] };
+        try {
+          const selected = JSON.parse(searchEl.dataset.stock);
+          if (selected.fullCode === fullCode) stockData = selected;
+        } catch (_) {
+          delete searchEl.dataset.stock;
+        }
       }
-      state.portfolio = await Portfolio.addTrade({
-        fullCode: stockData.fullCode || fullCode,
+      const pos = state.portfolio.find(p => p.fullCode === fullCode);
+      stockData = stockData || pos || { fullCode, code: fullCode.split(':')[1], name: '', market: fullCode.split(':')[0] };
+      try {
+        state.portfolio = await Portfolio.addTrade({
+        fullCode,
         code: stockData.code, name: stockData.name, market: stockData.market,
         direction: document.getElementById('posDirection').value,
         price, quantity,
-        date: document.getElementById('posDate').value,
+        date,
         time: document.getElementById('posTime').value,
-        commission: parseFloat(document.getElementById('posCommission').value) || 0,
-        stampTax: parseFloat(document.getElementById('posStampTax').value) || 0,
+        commission,
+        stampTax,
         note: document.getElementById('posNote').value
-      });
+        });
+      } catch (err) {
+        alert(err.message || '交易保存失败');
+        return;
+      }
       closeAllModals();
       if (state.currentTab === 'portfolio') renderPortfolio();
       if (state.chartSource === 'portfolio') await rebuildChartChips();
@@ -2807,11 +3022,7 @@
       document.getElementById('llmBaseUrl').value = state.settings.llmBaseUrl || preset.baseUrl;
       document.getElementById('llmApiKey').value = state.settings.llmApiKey || '';
       document.getElementById('llmModel').value = state.settings.llmModel || preset.model;
-      document.getElementById('llmVisionModel').value = state.settings.llmVisionModel || preset.visionModel || preset.model;
-      // 视觉模型若为空（首次设置或跟随对话模型），UI 上展示为跟随对话模型的值
-      if (!state.settings.llmVisionModel && state.settings.llmModel) {
-        document.getElementById('llmVisionModel').value = state.settings.llmModel;
-      }
+      document.getElementById('llmVisionModel').value = state.settings.llmVisionModel || preset.visionModel || '';
       document.getElementById('corsProxy').value = state.settings.corsProxy || '';
       document.getElementById('llmMaxTokens').value = state.settings.llmMaxTokens || 4096;
       // 大盘指数复选框
@@ -2903,8 +3114,9 @@
       StockAPI.init(state.settings);
       // 切换 K 线源后清空缓存，强制重拉
       state._overlayKlineCache = {};
+      state._klineCacheByPeriod = {};
+      state._klineCache = {};
       if (state.currentStock) {
-        delete state._klineCache[state.currentStock.fullCode];
         loadChart();
       }
     });
@@ -2919,8 +3131,9 @@
       await DB.set('settings', state.settings);
       StockAPI.init(state.settings);
       state._overlayKlineCache = {};
+      state._klineCacheByPeriod = {};
+      state._klineCache = {};
       if (state.currentStock) {
-        delete state._klineCache[state.currentStock.fullCode];
         loadChart();
       }
     });
@@ -2978,7 +3191,8 @@
       const visionInput = document.getElementById('llmVisionModel');
       const currentVision = state.settings.llmVisionModel || '';
       const previousModel = state._previousLlmModel || '';
-      if (!currentVision || currentVision === previousModel) {
+      // 只有原先明确跟随对话模型时才同步；空视觉模型代表当前预设不支持 OCR。
+      if (currentVision && currentVision === previousModel) {
         visionInput.value = newModel;
         state.settings.llmVisionModel = newModel;
       }
@@ -3032,12 +3246,14 @@
 
     // Export/Import
     document.getElementById('exportDataBtn').addEventListener('click', async () => {
-      const json = await DB.exportAll();
+      const includeSecrets = confirm('备份默认不包含 API Key/Token。\n\n是否将本机 API Key/Token 一并写入备份？仅在你确认文件不会外泄时选择“确定”。');
+      const json = await DB.exportAll({ includeSecrets });
       const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url; a.download = 'stock-pulse-backup.json'; a.click();
       URL.revokeObjectURL(url);
+      if (!includeSecrets) alert('备份已导出，API Key/Token 未包含在文件中。');
     });
     document.getElementById('importDataBtn').addEventListener('click', () => {
       document.getElementById('importFileInput').click();
@@ -3047,17 +3263,14 @@
       if (!file) return;
       try {
         await DB.importAll(await file.text());
-        const stored = await DB.getAll();
-        state.watchlist = stored.watchlist;
-        state.portfolio = stored.portfolio;
-        state.settings = { ...state.settings, ...stored.settings };
-    applyTheme(state.settings.theme);
-    if (state.settings.accentColor && state.settings.accentColor !== '#4fc3f7') {
-      applyAccentColor(state.settings.accentColor);
-    }
-        await rebuildChartChips();
-        alert('导入成功');
+        await reloadRuntimeFromStorage();
+        alert('导入成功，行情源、AI 配置和当前页面已重新加载。');
       } catch (err) { alert('导入失败：' + err.message); }
+    });
+    document.getElementById('clearDataBtn').addEventListener('click', async () => {
+      if (!confirm('将清空自选股、持仓、设置和 Skill，且无法撤销。确定继续？')) return;
+      await DB.clearAll();
+      location.reload();
     });
 
     // Close modals

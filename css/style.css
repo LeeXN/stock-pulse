@@ -57,8 +57,9 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .header-left { display:flex; align-items:center; gap:10px; }
-.header-left h1 { font-size:14px; font-weight:600; color:var(--accent); }
-.market-time { font-size:11px; color:var(--text-muted); }
+.header-left { min-width:0; }
+.header-left h1 { font-size:14px; font-weight:600; color:var(--accent); white-space:nowrap; }
+.market-time { font-size:11px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .header-right { display:flex; gap:4px; align-items:center; }
 .tab-btn {
   padding: 4px 10px; border:none; border-radius:4px;
@@ -142,7 +143,7 @@ body {
 
 /* Stock info */
 .stock-info {
-  display:flex; gap:12px; padding:4px 12px; align-items:baseline;
+  display:flex; flex-wrap:wrap; gap:4px 12px; padding:4px 12px; align-items:baseline;
   font-size:12px; flex-shrink:0;
 }
 .chart-summary-toolbar {
@@ -305,7 +306,7 @@ body {
 .add-btn.secondary:hover { border-color:var(--accent); color:var(--accent); }
 .watchlist-table { flex:1; overflow-y:auto; }
 .wl-row {
-  display:grid; grid-template-columns:70px 1fr 72px 62px 80px;
+  display:grid; grid-template-columns:70px minmax(0,1fr) 72px 62px 80px;
   padding:7px 10px; border-bottom:1px solid var(--border);
   align-items:center; cursor:pointer; transition:background .1s; font-size:11px;
 }
@@ -314,6 +315,7 @@ body {
 .wl-row .wl-name { color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .wl-row .wl-price { text-align:right; font-weight:600; }
 .wl-row .wl-change { text-align:right; }
+.wl-row .quote-missing { color:var(--text-muted); font-style:italic; }
 .wl-row .wl-del {
   text-align:center; color:var(--text-muted); cursor:pointer;
   font-size:14px; border:none; background:none;
@@ -352,7 +354,7 @@ body {
 .pos-card-code { color:var(--accent); font-size:11px; margin-left:6px; }
 .pos-card-pnl { font-weight:700; }
 .pos-card-bottom {
-  display:flex; gap:14px; margin-top:3px; font-size:11px; color:var(--text-secondary);
+  display:flex; flex-wrap:wrap; gap:4px 14px; margin-top:3px; font-size:11px; color:var(--text-secondary);
 }
 .pos-card-actions { display:flex; gap:5px; margin-top:5px; }
 .pos-card-actions button {
@@ -360,11 +362,12 @@ body {
   background:transparent; color:var(--text-secondary); cursor:pointer; font-size:10px;
 }
 .pos-card-actions button:hover { border-color:var(--accent); color:var(--accent); }
+.pos-card-actions .retry-quote { color:var(--accent); }
 .pos-card-actions .del-pos:hover { border-color:var(--danger); color:var(--danger); }
 .pos-trades { padding:4px 12px 8px 20px; font-size:11px; }
 .pos-trade-row {
-  display:flex; gap:10px; padding:3px 0;
-  color:var(--text-secondary); border-bottom:1px dashed var(--border);
+  display:flex; flex-wrap:wrap; gap:4px 10px; padding:3px 0;
+  color:var(--text-secondary); border-bottom:1px dashed var(--border); word-break:break-word;
 }
 .trade-buy { color:var(--up); }
 .trade-sell { color:var(--down); }
@@ -948,3 +951,61 @@ textarea:disabled { opacity:0.5; cursor:not-allowed; }
 }
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--accent); }
+
+/* Chrome Side Panel 常见窄宽度（约 360-430px） */
+@media (max-width: 430px) {
+  #header {
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    padding: 6px 8px;
+  }
+  .header-left {
+    width: 100%;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .header-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .header-right .tab-btn {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 5px;
+    white-space: nowrap;
+  }
+  .chart-stocks-bar,
+  .chart-search-row,
+  .period-bar {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+  .stock-info { padding-left: 8px; padding-right: 8px; }
+  .stock-vol { margin-left: 0; }
+  .watchlist-header,
+  .portfolio-header { padding-left: 8px; padding-right: 8px; }
+  .portfolio-header { flex-wrap: wrap; align-items: flex-start; gap: 5px; }
+  .portfolio-header .portfolio-summary {
+    flex: 1 0 100%;
+    width: 100%;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .portfolio-actions-bar { flex-wrap: wrap; padding: 6px 8px; }
+  .portfolio-actions-bar .add-btn { flex: 1; min-width: 0; padding-left: 5px; padding-right: 5px; }
+  .wl-row {
+    grid-template-columns: 58px minmax(0, 1fr) 66px 52px 58px;
+    padding-left: 6px;
+    padding-right: 6px;
+    font-size: 10.5px;
+  }
+  .pos-card { padding-left: 8px; padding-right: 8px; }
+  .pos-card-top { gap: 6px; }
+  .pos-card-pnl { white-space: nowrap; font-size: 11px; }
+  .pos-trades { padding-left: 10px; padding-right: 8px; }
+  .pos-trade-row { gap: 3px 7px; }
+  .modal { width: 96%; max-height: 90vh; }
+  .form-row { gap: 6px; }
+  .settings-actions { flex-wrap: wrap; }
+  .settings-actions button { flex: 1; min-width: 0; padding-left: 6px; padding-right: 6px; }
+}

@@ -190,16 +190,19 @@ const Skills = {
   },
 
   _formatQuote(q, stock) {
-    if (!q || !q.price) return '暂无行情';
-    const sign = q.change >= 0 ? '+' : '';
+    const price = Number(q && q.price);
+    if (!q || !Number.isFinite(price) || price <= 0) return '暂无行情';
+    const change = Number.isFinite(Number(q.change)) ? Number(q.change) : 0;
+    const changePercent = Number.isFinite(Number(q.changePercent)) ? Number(q.changePercent) : 0;
+    const sign = change >= 0 ? '+' : '';
     const dec = stock && stock.market === 'HK' ? 3 : 2;
     const lines = [
-      `最新价：${q.price.toFixed(dec)} 元`,
-      `涨跌：${sign}${q.change.toFixed(dec)} (${sign}${q.changePercent.toFixed(2)}%)`,
-      `今开：${(q.open || 0).toFixed(dec)}`,
-      `最高：${(q.high || 0).toFixed(dec)}`,
-      `最低：${(q.low || 0).toFixed(dec)}`,
-      `昨收：${(q.prevClose || 0).toFixed(dec)}`
+      `最新价：${price.toFixed(dec)} 元`,
+      `涨跌：${sign}${change.toFixed(dec)} (${sign}${changePercent.toFixed(2)}%)`,
+      `今开：${(Number(q.open) || 0).toFixed(dec)}`,
+      `最高：${(Number(q.high) || 0).toFixed(dec)}`,
+      `最低：${(Number(q.low) || 0).toFixed(dec)}`,
+      `昨收：${(Number(q.prevClose) || 0).toFixed(dec)}`
     ];
     if (q.volume) {
       const vol = q.volume >= 1e8 ? (q.volume / 1e8).toFixed(2) + ' 亿'
@@ -317,9 +320,9 @@ const Skills = {
     }
 
     // 从 body 提取 systemPrompt / userTemplate
-    // 匹配 "## 系统提示词" 后面代码块
-    const sysMatch = body.match(/##\s*系统提示词[^\n]*\n+```[^\n]*\n([\s\S]*?)\n```/);
-    const userMatch = body.match(/##\s*用户提示词模板[^\n]*\n+[\s\S]*?```[^\n]*\n([\s\S]*?)\n```/);
+    // 同时接受中文界面导出的格式和常见英文/标准 SKILL.md 标题。
+    const sysMatch = body.match(/##\s*(?:系统提示词|System Prompt|System Instructions|System)[^\n]*\n+```[^\n]*\n([\s\S]*?)\n```/i);
+    const userMatch = body.match(/##\s*(?:用户提示词模板|User Prompt Template|User Prompt|Instructions)[^\n]*\n+[\s\S]*?```[^\n]*\n([\s\S]*?)\n```/i);
 
     const systemPrompt = sysMatch ? sysMatch[1].trim() : '';
     const userTemplate = userMatch ? userMatch[1].trim() : '';

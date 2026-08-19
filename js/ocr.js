@@ -29,9 +29,8 @@ const OCR = {
    */
   isEnabled() {
     const s = this._settings || {};
-    // 视觉模型为空时回退到对话模型
-    const effectiveVisionModel = s.llmVisionModel || s.llmModel;
-    return !!(s.llmApiKey && effectiveVisionModel && s.llmBaseUrl);
+    // 纯文本模型不能接收图片，不能再把 llmModel 当作视觉模型使用。
+    return !!(s.llmApiKey && s.llmVisionModel && s.llmBaseUrl);
   },
 
   /**
@@ -41,7 +40,7 @@ const OCR = {
     const s = this._settings || {};
     if (!s.llmApiKey) return '未配置 LLM API Key';
     if (!s.llmBaseUrl) return '未配置 LLM Base URL';
-    if (!s.llmVisionModel && !s.llmModel) return '未配置对话模型 / 视觉模型';
+    if (!s.llmVisionModel) return '未配置视觉模型（当前模型可能不支持图片）';
     return 'OCR 引擎不可用';
   },
 
@@ -70,7 +69,8 @@ const OCR = {
     return {
       text,
       codes,
-      confidence: 90,
+      // OpenAI 兼容接口通常不会返回可验证的 OCR 置信度，避免伪造固定 90%。
+      confidence: null,
       preview: dataUrl,
       provider: 'llm',
       raw: res.content
@@ -164,7 +164,28 @@ const OCR = {
 
   parseBatchPortfolio(text) {
     if (!text) return [];
-    const lines = String(text).split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    const splitRecords = value => {
+      const source = String(value);
+      const records = [];
+      let record = '';
+      let quoted = false;
+      for (let i = 0; i < source.length; i++) {
+        const ch = source[i];
+        if (ch === '"') {
+          if (quoted && source[i + 1] === '"') { record += '""'; i++; }
+          else { quoted = !quoted; record += ch; }
+        } else if ((ch === '\n' || ch === '\r') && !quoted) {
+          if (ch === '\r' && source[i + 1] === '\n') i++;
+          if (record.trim()) records.push(record.trim());
+          record = '';
+        } else {
+          record += ch;
+        }
+      }
+      if (record.trim()) records.push(record.trim());
+      return records;
+    };
+    const lines = splitRecords(String(text));
     if (!lines.length) return [];
 
     const normalizeHeader = value => String(value || '')
@@ -187,7 +208,29 @@ const OCR = {
       }
       return null;
     };
-    const firstCells = lines[0].split(/\t|[,，]/).map(s => s.trim());
+    const detectDelimiter = line => line.includes('\t') ? '\t' : (line.includes(',') ? ',' : (line.includes('，') ? '，' : null));
+    const splitDelimitedLine = (line, delimiter) => {
+      if (!delimiter) return line.split(/\s+/).map(s => s.trim());
+      const cells = [];
+      let cell = '';
+      let quoted = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') {
+          if (quoted && line[i + 1] === '"') { cell += '"'; i++; }
+          else quoted = !quoted;
+        } else if (ch === delimiter && !quoted) {
+          cells.push(cell.trim());
+          cell = '';
+        } else {
+          cell += ch;
+        }
+      }
+      cells.push(cell.trim());
+      return cells;
+    };
+    const delimiter = detectDelimiter(lines[0]);
+    const firstCells = splitDelimitedLine(lines[0], delimiter);
     const headerMap = {};
     firstCells.forEach((cell, index) => {
       const key = findHeaderKey(cell);
@@ -196,10 +239,6 @@ const OCR = {
     const hasHeader = headerMap.code !== undefined;
     const start = hasHeader ? 1 : 0;
     const results = [];
-    const today = typeof TimeUtils !== 'undefined'
-      ? TimeUtils.todayInputValue()
-      : new Date().toISOString().split('T')[0];
-
     const parseNumber = value => {
       const cleaned = String(value ?? '').replace(/[￥¥,，\s]/g, '');
       if (!cleaned || cleaned === '-') return 0;
@@ -211,7 +250,7 @@ const OCR = {
       const normalized = typeof TimeUtils !== 'undefined'
         ? TimeUtils.normalizeDate(value)
         : String(value || '').replace(/\//g, '-');
-      return normalized || today;
+      return normalized;
     };
     const isDateToken = value => {
       const text = String(value || '').trim();
@@ -220,9 +259,7 @@ const OCR = {
 
     for (let lineIndex = start; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
-      const parts = (line.includes('\t') || line.includes(','))
-        ? line.split(/\t|[,，]/).map(s => s.trim())
-        : line.split(/\s+/).map(s => s.trim());
+      const parts = splitDelimitedLine(line, delimiter);
       if (!parts.length) continue;
 
       const get = key => hasHeader ? parts[headerMap[key]] : undefined;
