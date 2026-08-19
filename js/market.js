@@ -171,7 +171,10 @@ const MarketAPI = {
     const cacheTtl = ttl || this._CACHE_TTL;
     if (!force && this._cache && (Date.now() - this._cacheAt) < cacheTtl) {
       const cachedIds = new Set(this._cache.map(c => c.secid));
-      if (ids.every(id => cachedIds.has(id))) return this._cache;
+      if (ids.every(id => cachedIds.has(id))) {
+        // 缓存可能来自更大的旧选择集，不能把已取消的指数继续带回界面。
+        return this._cache.filter(item => ids.includes(item.secid));
+      }
     }
 
     const results = [];

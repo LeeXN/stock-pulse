@@ -424,6 +424,12 @@ const ChartManager = {
     this._restoreOrFit(!!options.preserveRange, previousRange);
   },
 
+  clearMain() {
+    if (!this.chart) return;
+    this._clearSeries();
+    this._indicators = { boll: false, macd: false, kdj: false };
+  },
+
   _clearSeries() {
     if (this.candleSeries) {
       this.chart.removeSeries(this.candleSeries);

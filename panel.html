@@ -189,7 +189,7 @@
         </div>
         <div class="ocr-preview" id="ocrPreview" style="display:none">
           <img id="ocrPreviewImg" alt="preview">
-          <div class="ocr-preview-label">预处理后（灰度 / 拉伸对比度 / 放大）</div>
+          <div class="ocr-preview-label">原图预览（发送给已配置的视觉模型）</div>
         </div>
         <div class="ocr-progress" id="ocrProgress" style="display:none">
           <div class="progress-bar"><div class="progress-fill" id="ocrProgressFill"></div></div>
@@ -228,13 +228,13 @@
           </div>
           <div class="form-group">
             <label>价格</label>
-            <input type="number" id="posPrice" step="0.001" placeholder="0.00">
+            <input type="number" id="posPrice" min="0.000001" step="any" placeholder="0.00">
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>数量(股)</label>
-            <input type="number" id="posQuantity" step="100" placeholder="0">
+            <label>数量（按市场单位）</label>
+            <input type="number" id="posQuantity" min="0.000001" step="any" placeholder="0">
           </div>
           <div class="form-group">
             <label>日期</label>
@@ -358,7 +358,7 @@
         <div class="form-group">
           <label>大盘指数显示</label>
           <div id="marketIndicesCheckboxes" class="checkbox-grid"></div>
-          <div class="hint">勾选要显示在顶栏的指数，修改后需刷新面板</div>
+          <div class="hint">勾选要显示在顶栏的指数，修改后会立即刷新</div>
         </div>
         <hr class="settings-divider">
         <div class="form-group">
@@ -429,10 +429,10 @@
           <input type="text" id="llmModel" placeholder="gpt-4o-mini">
         </div>
         <div class="form-group">
-          <label>视觉模型 <span class="hint">（OCR 用 · 默认与对话模型一致）</span></label>
-          <input type="text" id="llmVisionModel" placeholder="留空 = 自动跟随对话模型">
+          <label>视觉模型 <span class="hint">（OCR 用 · 必须支持图片输入）</span></label>
+          <input type="text" id="llmVisionModel" placeholder="例如 gpt-4o-mini；纯文本模型不可用">
           <div class="hint" style="margin-top:4px">
-            OpenRouter 做 OCR 时，这里必须填支持图片输入的模型；如果跟随了纯文本模型，OCR 会失败。
+            这里必须填支持图片输入的模型；纯文本模型不会被误判为可用 OCR。
           </div>
         </div>
         <div class="form-group">
@@ -457,6 +457,7 @@
         <div class="settings-actions">
           <button class="danger-btn" id="exportDataBtn">导出数据</button>
           <button class="danger-btn" id="importDataBtn">导入数据</button>
+          <button class="danger-btn" id="clearDataBtn">清空本地数据</button>
           <input type="file" id="importFileInput" accept=".json" style="display:none">
         </div>
       </div>

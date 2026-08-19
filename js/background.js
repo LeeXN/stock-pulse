@@ -101,10 +101,33 @@ async function addToWatchlistViaMessage(stock) {
       if (parts[1]) name = parts[1];
     }
     const stockWithName = { ...stock, name };
-    chrome.runtime.sendMessage({ type: 'sp:add-watchlist', stock: stockWithName }).catch(() => {});
+    await persistWatchlist(stockWithName);
+    notifyPanelWatchlist(stockWithName);
   } catch (e) {
-    chrome.runtime.sendMessage({ type: 'sp:add-watchlist', stock }).catch(() => {});
+    await persistWatchlist(stock);
+    notifyPanelWatchlist(stock);
   }
+}
+
+async function persistWatchlist(stock) {
+  const stored = await chrome.storage.local.get({ watchlist: [] });
+  const watchlist = Array.isArray(stored.watchlist) ? stored.watchlist : [];
+  if (!watchlist.some(item => item && item.fullCode === stock.fullCode)) {
+    watchlist.push({
+      fullCode: stock.fullCode,
+      code: stock.code,
+      name: stock.name || stock.code,
+      market: stock.market
+    });
+    await chrome.storage.local.set({ watchlist });
+  }
+}
+
+function notifyPanelWatchlist(stock) {
+  try {
+    const message = chrome.runtime.sendMessage({ type: 'sp:add-watchlist', stock });
+    if (message && typeof message.catch === 'function') message.catch(() => {});
+  } catch (_) {}
 }
 
 function openEastmoney(stock) {

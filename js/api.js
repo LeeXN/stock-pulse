@@ -312,7 +312,8 @@ const EastmoneyAPI = {
     const kltMap = { daily: 101, weekly: 102, monthly: 103, yearly: 103 };
     const klt = kltMap[period] || 101;
 
-    const buildUrl = (sid) => `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${sid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57&klt=${klt}&fqt=1&lmt=${count}&end=20500101&_=${Date.now()}`;
+    // 使用未复权价格，才能和用户录入的券商成交价、实时价保持同一口径。
+    const buildUrl = (sid) => `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${sid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57&klt=${klt}&fqt=0&lmt=${count}&end=20500101&_=${Date.now()}`;
 
     let data;
     try {
@@ -331,11 +332,6 @@ const EastmoneyAPI = {
     }
 
     console.log('[Eastmoney getKline]', fullCode, '-> response rc:', data?.rc, 'hasKlines:', !!data?.data?.klines, 'klineCount:', data?.data?.klines?.length);
-    if (!data.data || !data.data.klines) {
-      console.warn('[Eastmoney getKline]', fullCode, '-> no klines data. Full response:', JSON.stringify(data).substring(0, 300));
-      return [];
-    }
-
     // US fallback: try 106 if 105 returns no data
     if ((!data.data || !data.data.klines) && market === 'US') {
       console.log('[Eastmoney getKline]', fullCode, '-> 105 returned no data, trying 106');
@@ -350,7 +346,10 @@ const EastmoneyAPI = {
         } catch (_) {}
       }
     }
-    if (!data.data || !data.data.klines) return [];
+    if (!data.data || !data.data.klines) {
+      console.warn('[Eastmoney getKline]', fullCode, '-> no klines data. Full response:', JSON.stringify(data).substring(0, 300));
+      return [];
+    }
     let klines = data.data.klines.map(line => {
       const p = line.split(',');
       return {
@@ -747,12 +746,14 @@ const TushareAPI = {
 
   async getKline(fullCode, period = 'daily', count = 120, settings) {
     const tsCode = CodeConvert.toTushare(fullCode);
-    const freqMap = { daily: 'D', weekly: 'W', monthly: 'M' };
+    // 年线用月线聚合，避免误用日线；不使用前复权以匹配成交记录价格。
+    const freqMap = { daily: 'D', weekly: 'W', monthly: 'M', yearly: 'M' };
     const freq = freqMap[period] || 'D';
     const end = new Date();
-    const start = new Date(end.getTime() - count * 2 * 24 * 3600 * 1000);
+    const daysByPeriod = { daily: 3, weekly: 14, monthly: 45, yearly: 450 };
+    const start = new Date(end.getTime() - count * (daysByPeriod[period] || 3) * 24 * 3600 * 1000);
     const data = await this._call('pro_bar', {
-      ts_code: tsCode, freq, start_date: this._tushareDate(start), end_date: this._tushareDate(end), adj: 'qfq'
+      ts_code: tsCode, freq, start_date: this._tushareDate(start), end_date: this._tushareDate(end)
     }, 'trade_date,open,high,low,close,vol', settings);
     if (!data.items) return [];
     const out = data.items.map(row => ({
@@ -770,7 +771,7 @@ const TushareAPI = {
     const market = String(fullCode || '').split(':')[0];
     const today = this._marketToday(market);
     const data = await this._call('pro_bar', {
-      ts_code: tsCode, freq: '1min', start_date: today, end_date: today, adj: 'qfq'
+      ts_code: tsCode, freq: '1min', start_date: today, end_date: today
     }, 'trade_time,open,close,high,low,vol', settings);
     if (!data.items || !data.items.length) return { prevClose: 0, points: [] };
     const points = data.items.map(row => ({
@@ -915,7 +916,8 @@ const SinaAPI = {
 
   async _getHKLine(fullCode, period, count) {
     const [, code] = fullCode.split(':');
-    const url = `https://stock.finance.sina.com.cn/hkstock/api/jsonp.php/HK_MarketDataService.getDayLine?symbol=${code}&type=normal&count=${count}&_=${Date.now()}`;
+    const fetchCount = period === 'weekly' ? count * 7 : period === 'monthly' ? count * 31 : period === 'yearly' ? count * 365 : count;
+    const url = `https://stock.finance.sina.com.cn/hkstock/api/jsonp.php/HK_MarketDataService.getDayLine?symbol=${code}&type=normal&count=${fetchCount}&_=${Date.now()}`;
     const text = await (await fetch(url)).text();
     const start = text.indexOf('[');
     const json = text.slice(start, text.lastIndexOf(']') + 1);
@@ -928,16 +930,17 @@ const SinaAPI = {
       low: parseFloat(row.low) || 0, close: parseFloat(row.close) || 0,
       volume: 0
     }));
-    if (period === 'yearly') return this._aggregateYearly(out);
+    if (period === 'weekly' || period === 'monthly') return this._aggregatePeriod(out, period).slice(-count);
+    if (period === 'yearly') return this._aggregateYearly(out).slice(-count);
     return out;
   },
 
   async getRealtime(fullCode) {
     const [market] = fullCode.split(':');
     if (market === 'HK') {
-      const klines = await this._getHKLine(fullCode, 'daily', 2);
-      if (!klines.length) return { prevClose: 0, points: [] };
-      return { prevClose: klines[0].close, points: [] };
+      // 新浪港股接口只有日线，直接返回空分时会让用户误以为图表坏了。
+      // 港股分时回退到东财的 trends2 接口，仍保留新浪作为日线来源。
+      return EastmoneyAPI.getRealtime(fullCode);
     }
     const symbol = CodeConvert.toSinaSymbol(fullCode);
     const url = `https://quotes.sina.cn/cn/api/jsonp_v2.php/var=/CN_MarketDataService.getMinLine?symbol=${symbol}&datalen=240`;
@@ -971,6 +974,34 @@ const SinaAPI = {
       }
     }
     return Object.values(yearMap).sort((a, b) => a.time.localeCompare(b.time));
+  },
+
+  _aggregatePeriod(data, period) {
+    const groups = {};
+    for (const item of data) {
+      const date = new Date(`${String(item.time).slice(0, 10)}T00:00:00Z`);
+      if (Number.isNaN(date.getTime())) continue;
+      let key;
+      let time;
+      if (period === 'monthly') {
+        key = String(item.time).slice(0, 7);
+        time = `${key}-01`;
+      } else {
+        const day = date.getUTCDay() || 7;
+        const monday = new Date(date.getTime() - (day - 1) * 86400000);
+        time = monday.toISOString().slice(0, 10);
+        key = time;
+      }
+      if (!groups[key]) groups[key] = { time, open: item.open, high: item.high, low: item.low, close: item.close, volume: item.volume || 0 };
+      else {
+        const group = groups[key];
+        group.high = Math.max(group.high, item.high);
+        group.low = Math.min(group.low, item.low);
+        group.close = item.close;
+        group.volume += item.volume || 0;
+      }
+    }
+    return Object.values(groups).sort((a, b) => a.time.localeCompare(b.time));
   }
 };
 
@@ -1023,7 +1054,10 @@ const JuheAPI = {
 
   async getKline(fullCode, period = 'daily', count = 120, settings) {
     const [market, code] = fullCode.split(':');
-    if (market === 'HK') { console.warn('Juhe HK K线暂未实现'); return []; }
+    if (market === 'HK') {
+      console.warn('Juhe 不提供港股 K 线，回退到东方财富');
+      return EastmoneyAPI.getKline(fullCode, period, count);
+    }
     const typeMap = { realtime: 1, daily: 101, weekly: 102, monthly: 103, yearly: 103 };
     const type = typeMap[period] || 101;
     const url = `${this._endpoint}/stock/hskline?key=${settings.juheKey}&gid=${CodeConvert.toJuheGid(fullCode)}&type=${type}&datalen=${count}`;
@@ -1045,7 +1079,10 @@ const JuheAPI = {
 
   async getRealtime(fullCode, settings) {
     const [market] = fullCode.split(':');
-    if (market === 'HK') return { prevClose: 0, points: [] };
+    if (market === 'HK') {
+      console.warn('Juhe 不提供港股分时，回退到东方财富');
+      return EastmoneyAPI.getRealtime(fullCode);
+    }
     const url = `${this._endpoint}/stock/hsmindata?key=${settings.juheKey}&gid=${CodeConvert.toJuheGid(fullCode)}&type=1`;
     try {
       const resp = await fetch(url);
@@ -1092,6 +1129,7 @@ const Providers = {
     id: 'tencent',
     label: '腾讯财经',
     caps: { quote: true, kline: false },
+    markets: ['domestic', 'intl'],
     requires: [],
     impl: TencentAPI
   },
@@ -1099,6 +1137,7 @@ const Providers = {
     id: 'eastmoney',
     label: '东方财富',
     caps: { quote: true, kline: true },
+    markets: ['domestic', 'intl'],
     requires: [],
     impl: EastmoneyAPI
   },
@@ -1106,6 +1145,7 @@ const Providers = {
     id: 'sina',
     label: '新浪财经',
     caps: { quote: true, kline: true },
+    markets: ['domestic', 'intl'],
     requires: [],
     impl: SinaAPI
   },
@@ -1113,6 +1153,7 @@ const Providers = {
     id: 'tushare',
     label: 'Tushare Pro',
     caps: { quote: true, kline: true },
+    markets: ['domestic', 'intl'],
     requires: ['tushareToken'],
     impl: TushareAPI
   },
@@ -1120,6 +1161,7 @@ const Providers = {
     id: 'juhe',
     label: '聚合数据',
     caps: { quote: true, kline: true },
+    markets: ['domestic'],
     requires: ['juheKey'],
     impl: JuheAPI
   },
@@ -1127,6 +1169,7 @@ const Providers = {
     id: 'crypto',
     label: 'Crypto (Binance/Dex)',
     caps: { quote: true, kline: true },
+    markets: ['crypto'],
     requires: [],
     impl: CryptoAPI
   }
@@ -1169,26 +1212,34 @@ const StockAPI = {
   },
 
   _getQuoteProvider(intl) {
+    const fallback = Providers.eastmoney;
     if (intl && this._settings.intlQuoteProvider) {
-      return Providers[this._settings.intlQuoteProvider] || Providers[this._settings.quoteProvider || 'eastmoney'];
+      const selected = Providers[this._settings.intlQuoteProvider];
+      return selected && selected.markets.includes('intl') ? selected : fallback;
     }
     if (intl) {
       const configured = this._settings.quoteProvider || 'eastmoney';
       // 韩国/国际股票默认优先用东方财富报价，避免 Tencent 对 KR 这类市场返回空结果
       if (configured === 'tencent') return Providers.eastmoney;
-      return Providers[configured] || Providers.eastmoney;
+      const selected = Providers[configured];
+      return selected && selected.markets.includes('intl') ? selected : fallback;
     }
-    return Providers[this._settings.quoteProvider || 'eastmoney'];
+    const selected = Providers[this._settings.quoteProvider || 'eastmoney'];
+    return selected && selected.markets.includes('domestic') ? selected : fallback;
   },
   _getKlineProvider(intl) {
+    const fallback = Providers.eastmoney;
     if (intl && this._settings.intlKlineProvider) {
-      return Providers[this._settings.intlKlineProvider] || Providers[this._settings.klineProvider || 'eastmoney'];
+      const selected = Providers[this._settings.intlKlineProvider];
+      return selected && selected.markets.includes('intl') ? selected : fallback;
     }
     if (intl) {
       const configured = this._settings.klineProvider || 'eastmoney';
-      return Providers[configured] || Providers.eastmoney;
+      const selected = Providers[configured];
+      return selected && selected.markets.includes('intl') ? selected : fallback;
     }
-    return Providers[this._settings.klineProvider || 'eastmoney'];
+    const selected = Providers[this._settings.klineProvider || 'eastmoney'];
+    return selected && selected.markets.includes('domestic') ? selected : fallback;
   },
   _checkRequirements(p, action) {
     if (!p) return `未注册的 provider`;
@@ -1274,8 +1325,19 @@ const StockAPI = {
     return merged.slice(0, 12);
   },
 
+  matchSearchResult(parsed, results) {
+    const candidates = Array.isArray(results) ? results : [];
+    if (!parsed) return candidates[0] || null;
+    const fullCode = String(parsed.fullCode || '').toUpperCase();
+    const market = String(parsed.market || '').toUpperCase();
+    const code = String(parsed.code || '');
+    return candidates.find(item => String(item?.fullCode || '').toUpperCase() === fullCode) ||
+      candidates.find(item => String(item?.market || '').toUpperCase() === market && String(item?.code || '') === code) ||
+      null;
+  },
+
   listProviders() {
-    return Object.values(Providers).map(({ id, label, caps, requires }) => ({ id, label, caps, requires }));
+    return Object.values(Providers).map(({ id, label, caps, requires, markets }) => ({ id, label, caps, requires, markets }));
   },
 
   getActiveProviders() {

@@ -65,9 +65,10 @@ const LLM = {
     const { system, user, images, model, temperature, maxTokens } = opts || {};
     const hasImages = images && images.length;
     const useModel = model ||
-      (hasImages
-        ? (this._settings.llmVisionModel || this._settings.llmModel)  // 视觉模型为空时 fallback 到对话模型
-        : this._settings.llmModel);
+      (hasImages ? this._settings.llmVisionModel : this._settings.llmModel);
+    if (hasImages && !this._settings.llmVisionModel) {
+      throw new Error('未配置视觉模型；当前对话模型可能不支持图片输入');
+    }
     if (!useModel) throw new Error('未配置模型名' + (hasImages ? '（视觉模型）' : ''));
 
     let userContent;
@@ -107,8 +108,8 @@ const LLM = {
    */
   async ocr(imageDataUrl, target) {
     if (!this._settings.llmApiKey) throw new Error('请先在设置中配置 LLM API Key');
-    if (!this._settings.llmVisionModel && !this._settings.llmModel) {
-      throw new Error('当前 LLM 预设未配置对话模型 / 视觉模型');
+    if (!this._settings.llmVisionModel) {
+      throw new Error('当前 LLM 预设未配置视觉模型，无法进行 OCR');
     }
 
     const isPortfolio = target === 'portfolio';

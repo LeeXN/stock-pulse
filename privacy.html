@@ -37,7 +37,7 @@
   <p>Stock Pulse（"我们"）非常重视您的隐私保护。本隐私权政策旨在说明 Stock Pulse 浏览器插件如何处理用户数据。请在使用前仔细阅读。</p>
 
   <h2>一、数据收集与处理（本地）</h2>
-  <p>Stock Pulse 是一款本地优先的数据查看工具，<strong>不会主动上传、收集或传输任何个人身份信息</strong>。</p>
+  <p>Stock Pulse 是一款本地优先的数据查看工具，除非您主动调用行情、AI 或 OCR 服务，否则不会上传、收集或传输数据。</p>
   <p>以下数据仅存储在您的本地设备（Chrome 浏览器存储）中：</p>
 
   <h3>1.1 用户设置数据</h3>
@@ -81,6 +81,7 @@
     <li>支持通过用户自备的 <strong>CORS 代理</strong>转发请求</li>
     <li>支持的 LLM 提供商：OpenAI、DeepSeek、阿里云通义千问、Moonshot AI（月之暗面）、OpenRouter、Google Gemini</li>
     <li>您的请求内容仅用于生成回复，不用于模型训练</li>
+    <li>使用 OCR 时，上传的截图会直接发送到您配置的 LLM 视觉服务商；截图可能包含股票、账户或资产信息，请仅上传您愿意交给该服务商处理的图片</li>
   </ul>
 
   <h2>三、权限使用说明</h2>
@@ -94,7 +95,7 @@
   </ul>
 
   <h2>四、数据共享</h2>
-  <p>我们<strong>不会</strong>主动向任何第三方共享、出售或传输您的个人数据或设置数据。您在本插件中配置的 API 密钥仅存储于本地，不会被发送至我们运营者控制的任何服务器。</p>
+  <p>我们<strong>不会</strong>主动向任何第三方共享、出售或传输您的个人数据或设置数据。您在本插件中配置的 API 密钥仅存储于本地，并仅在您调用对应服务时直接发送给您选择的服务商。</p>
   <p>插件中指向外部金融数据源和 LLM 提供商的所有请求，均为您与相应服务提供商之间的直接交互，受各提供商的隐私政策约束。</p>
 
   <h2>五、数据安全</h2>
@@ -132,7 +133,7 @@
   <p>Stock Pulse ("we", "us", or "our") is committed to protecting your privacy. This Privacy Policy explains how the Stock Pulse browser extension handles user data. Please read it carefully before using the extension.</p>
 
   <h2>1. Data Collection and Processing (Local)</h2>
-  <p>Stock Pulse is a local-first market data viewer. <strong>We do not proactively collect, upload, or transmit any personally identifiable information (PII).</strong></p>
+  <p>Stock Pulse is a local-first market data viewer. It does not upload data unless you actively invoke a market, AI, or OCR service.</p>
   <p>The following data is stored exclusively on your local device (Chrome browser storage):</p>
 
   <h3>1.1 User Settings</h3>
@@ -176,6 +177,7 @@
     <li>Requests may be forwarded through a <strong>user-provided CORS proxy</strong></li>
     <li>Supported LLM providers: OpenAI, DeepSeek, Alibaba Tongyi Qianwen, Moonshot AI, OpenRouter, Google Gemini</li>
     <li>Your request content is used solely for generating responses and is not used for model training</li>
+    <li>When OCR is used, the uploaded screenshot is sent directly to your configured LLM vision provider; it may contain stock, account, or asset information</li>
   </ul>
 
   <h2>3. Permission Usage</h2>
@@ -189,7 +191,7 @@
   </ul>
 
   <h2>4. Data Sharing</h2>
-  <p>We do <strong>not</strong> share, sell, or transfer your personal data or settings to any third party. API keys configured within the extension are stored locally and are never sent to any server controlled by the extension developers.</p>
+  <p>We do <strong>not</strong> share, sell, or transfer your personal data or settings to any third party. API keys configured within the extension are stored locally and are sent directly to your selected provider only when you invoke that provider.</p>
   <p>All requests to external financial data sources and LLM providers are direct interactions between you and the respective service providers, governed by their own privacy policies.</p>
 
   <h2>5. Data Security</h2>

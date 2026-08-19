@@ -158,9 +158,9 @@ const TimeUtils = (() => {
     return `${p.year}-${pad(p.month)}-${pad(p.day)} ${pad(p.hour)}:${pad(p.minute)}`;
   }
 
-  function todayInputValue() {
-    const timeZone = getLocalTimeZone();
-    const p = formatParts(Date.now() / 1000, timeZone);
+  function todayInputValue(timeZone) {
+    const zone = timeZone || getLocalTimeZone();
+    const p = formatParts(Date.now() / 1000, zone);
     return p ? `${p.year}-${pad(p.month)}-${pad(p.day)}` : '';
   }
 
@@ -213,7 +213,9 @@ const TimeUtils = (() => {
     const year = Number(match[1]);
     const month = Number(match[2]);
     const day = Number(match[3]);
-    if (year < 1900 || year > 2200 || month < 1 || month > 12 || day < 1 || day > 31) return '';
+    if (year < 1900 || year > 2200 || month < 1 || month > 12 || day < 1) return '';
+    const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    if (day > daysInMonth) return '';
     return `${year}-${pad(month)}-${pad(day)}`;
   }
 
