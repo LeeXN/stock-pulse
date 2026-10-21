@@ -1,5 +1,5 @@
 /**
- * app.js v1.2.1 - 主控制器（多股图表、批量/OCR导入、Side Panel）
+ * app.js v1.3.0 - 主控制器（市场K线、多股图表、批量/OCR导入、Side Panel）
  */
 (async function () {
   'use strict';
@@ -9,7 +9,12 @@
     currentStock: null,
     currentPeriod: 'daily',
     currentTab: 'chart',
-    chartSource: 'portfolio', // 'portfolio' | 'watchlist'
+    chartSource: 'portfolio', // 'market' | 'portfolio' | 'watchlist'
+    chartSelections: {},
+    chartExtras: { portfolio: [], watchlist: [] },
+    _chartSourceSeq: 0,
+    _marketRequestSeq: 0,
+    marketQuotes: {},
     chartStocks: [],          // stocks shown as chips in chart tab
     watchlist: [],
     portfolio: [],
@@ -98,9 +103,11 @@
     return sortState.dir === 'asc' ? ' ▲' : ' ▼';
   }
 
-  function formatPrice(value, market, fallback = '--') {
+  function formatPrice(value, market, kind, fallback = '--') {
     const num = Number(value);
     if (!Number.isFinite(num)) return fallback;
+    // 指数报价是点位，不能沿用同市场个股的币种和价格精度。
+    if (kind === 'index') return `${num.toFixed(2)} 点`;
     const mkt = String(market || '').toUpperCase();
     const currencyByMarket = {
       HK: 'HKD',
@@ -217,6 +224,7 @@
       state.indicators = { ...state.indicators, ...stored.settings.indicators };
     }
     state.currentStock = stored.currentStock || null;
+    if (state.currentStock?.secid || state.currentStock?.fullCode?.startsWith('INDEX:')) state.chartSource = 'market';
 
     // 同步指标按钮高亮
     document.querySelectorAll('.ind-btn[data-ind]').forEach(b => {
@@ -286,27 +294,53 @@
 
   // ===== Chart Chips (multi-stock) =====
   async function rebuildChartChips() {
-    // 确保从 storage 读取最新数据
-    if (state.chartSource === 'portfolio') {
-      state.portfolio = await DB.get('portfolio', []);
-    } else {
-      state.watchlist = await DB.get('watchlist', []);
-    }
-    const source = state.chartSource === 'portfolio' ? state.portfolio : state.watchlist;
+    const sourceName = state.chartSource;
+    const requestId = ++state._chartSourceSeq;
+    const source = sourceName === 'market'
+      ? MarketAPI.getChartStocks(state.settings.marketIndices)
+      : await DB.get(sourceName, []);
+    if (requestId !== state._chartSourceSeq || sourceName !== state.chartSource) return;
+    if (sourceName !== 'market') state[sourceName] = source;
     const sourceCodes = new Set(source.map(s => s.fullCode));
-    // 仅保留手动添加的（fromSource: false），不保留另一个源的股票
-    const extras = (state.chartStocks || []).filter(s => !s.fromSource && !sourceCodes.has(s.fullCode));
+    const extras = (state.chartExtras[sourceName] || []).filter(s => !sourceCodes.has(s.fullCode));
     state.chartStocks = [
-      ...source.map(s => ({ fullCode: s.fullCode, code: s.code, name: s.name, market: s.market, fromSource: true })),
+      ...source.map(s => ({ ...s, fromSource: true })),
       ...extras
     ];
-    // 如果当前选中的股票不在新列表中，自动选第一个
-    if (state.currentStock && !state.chartStocks.some(s => s.fullCode === state.currentStock.fullCode)) {
-      state.currentStock = state.chartStocks.length > 0 ? state.chartStocks[0] : null;
-    }
+    const selectedCode = state.chartSelections[sourceName] || state.currentStock?.fullCode;
+    const selected = state.chartStocks.find(s => s.fullCode === selectedCode) || state.chartStocks[0];
+    if (selected && selected.fullCode !== state.currentStock?.fullCode) showStockInfo(selected);
+    else if (selected) state.currentStock = selected;
+    else clearStockDisplay();
+    syncChartControls();
     renderChartChips();
     renderStockSummaryTable();
-    if (!state.currentStock) clearStockDisplay();
+  }
+
+  function syncChartControls() {
+    const market = state.chartSource === 'market';
+    if (market && state.currentPeriod === 'realtime') state.currentPeriod = 'daily';
+    document.querySelectorAll('.src-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.src === state.chartSource));
+    document.querySelectorAll('.period-btn').forEach(btn => {
+      btn.disabled = market && btn.dataset.period === 'realtime';
+      btn.title = btn.disabled ? '市场分组暂不支持分时' : '';
+      btn.classList.toggle('active', btn.dataset.period === state.currentPeriod);
+    });
+    document.getElementById('chartAddStockBtn').hidden = market;
+    if (market) document.getElementById('chartSearchRow').style.display = 'none';
+  }
+
+  async function switchChartSource(source, fullCode) {
+    if (state.currentStock) state.chartSelections[state.chartSource] = state.currentStock.fullCode;
+    if (state.chartSource !== 'market') state.chartExtras[state.chartSource] = state.chartStocks.filter(s => !s.fromSource);
+    state.chartSource = source;
+    if (fullCode) state.chartSelections[source] = fullCode;
+    // 在读取分组数据之前使旧请求失效，避免迟到响应绘制到新的分组。
+    clearStockDisplay();
+    await rebuildChartChips();
+    if (state.chartSource !== source) return;
+    if (state.currentStock) loadChart();
+    refreshChartQuotes();
   }
 
   function renderChartChips() {
@@ -343,7 +377,8 @@
     }
   }
 
-  function addChartStock(stock) {
+  async function addChartStock(stock) {
+    if (state.chartSource === 'market') await switchChartSource('watchlist');
     if (state.chartStocks.find(s => s.fullCode === stock.fullCode)) {
       // Already exists, just select it
       showStockInfo(stock);
@@ -355,6 +390,7 @@
       fullCode: stock.fullCode, code: stock.code,
       name: stock.name, market: stock.market, fromSource: false
     });
+    state.chartExtras[state.chartSource] = state.chartStocks.filter(s => !s.fromSource);
     showStockInfo(stock);
     loadChart();
     renderChartChips();
@@ -364,6 +400,7 @@
     const stock = state.chartStocks.find(s => s.fullCode === fullCode);
     if (stock && stock.fromSource) return; // 源股不可删
     state.chartStocks = state.chartStocks.filter(s => s.fullCode !== fullCode);
+    state.chartExtras[state.chartSource] = state.chartStocks.filter(s => !s.fromSource);
     if (state.currentStock && state.currentStock.fullCode === fullCode) {
       state.currentStock = state.chartStocks.length > 0 ? state.chartStocks[0] : null;
       if (state.currentStock) {
@@ -422,7 +459,7 @@
       const change = q.changePercent || 0;
       const cls = change >= 0 ? 'price-up' : 'price-down';
       const isActive = state.currentStock && state.currentStock.fullCode === stock.fullCode;
-      const priceStr = q.price ? formatPrice(q.price, q.market) : '--';
+      const priceStr = q.price ? formatPrice(q.price, q.market, q.kind) : '--';
       const changeStr = q.price ? formatChange(change) : '--';
       const vol = formatVolume(q.volume);
 
@@ -618,7 +655,7 @@
       if (!row) continue;
       const change = q.changePercent || 0;
       const cls = change >= 0 ? 'price-up' : 'price-down';
-      const priceStr = q.price ? formatPrice(q.price, q.market) : '--';
+      const priceStr = q.price ? formatPrice(q.price, q.market, q.kind) : '--';
       const changeStr = q.price ? formatChange(change) : '--';
       const vol = formatVolume(q.volume);
       const cells = row.querySelectorAll('td');
@@ -634,9 +671,10 @@
   async function loadChart() {
     if (!state.currentStock) return;
     const currentStock = state.currentStock;
+    const period = state.currentPeriod;
     const requestId = ++state._chartRequestSeq;
-    if (state._loadingChart) return; // 防止并发
     state._loadingChart = true;
+    setChartStatus('正在加载…');
     try {
       // 自动初始化图表（如果尚未创建）
       if (!ChartManager.chart) {
@@ -648,18 +686,18 @@
       }
       const { fullCode } = currentStock;
       ChartManager.setTimeContext(currentStock.market, state.settings);
-      const chartKey = `${fullCode}:${state.currentPeriod}`;
+      const chartKey = `${fullCode}:${period}`;
       const preserveRange = state._lastChartKey === chartKey;
 
       try {
-        if (state.currentPeriod === 'realtime') {
+        if (period === 'realtime') {
           const data = await StockAPI.getRealtime(fullCode);
           if (requestId !== state._chartRequestSeq) return;
           if (!data.points || data.points.length === 0) {
             console.warn('[loadChart] realtime data empty for', fullCode);
-            state._chartStatus = '无分时数据（可能已休市）';
+            setChartStatus('无分时数据（可能已休市）', true);
           } else {
-            state._chartStatus = '';
+            setChartStatus('');
           }
           ChartManager.renderRealtime(data, {
             market: currentStock.market,
@@ -667,19 +705,19 @@
             preserveRange
           });
         } else {
-          const cacheKey = `${fullCode}:${state.currentPeriod}`;
+          const cacheKey = `${fullCode}:${period}`;
           let klines = [];
           let status = '';
           try {
-            const fetched = await StockAPI.getKline(fullCode, state.currentPeriod, state.settings.klineCount);
+            const fetched = await StockAPI.getKline(fullCode, period, state.settings.klineCount);
             if (requestId !== state._chartRequestSeq) return;
             if (Array.isArray(fetched) && fetched.length > 0) {
               klines = fetched;
               state._klineCacheByPeriod[cacheKey] = fetched;
-              state._klineCache[fullCode] = fetched;
+              if (period === 'daily') state._klineCache[fullCode] = fetched;
             } else {
               klines = state._klineCacheByPeriod[cacheKey] || [];
-              status = klines.length ? '行情暂不可用，显示上次成功数据' : '暂无K线数据，可切换数据源或稍后重试';
+              status = klines.length ? '行情暂不可用，显示上次成功数据' : '暂无K线数据，请重试或稍后再试';
             }
           } catch (err) {
             if (requestId !== state._chartRequestSeq) return;
@@ -687,7 +725,9 @@
             klines = state._klineCacheByPeriod[cacheKey] || [];
             status = klines.length ? '行情暂不可用，显示上次成功数据' : `K线加载失败：${err.message || '请求失败'}`;
           }
-          state._chartStatus = status;
+          const lastTime = klines[klines.length - 1]?.time;
+          const dateText = lastTime ? `最近一根 K 线：${lastTime}` : '';
+          setChartStatus([status, dateText, currentStock.market === 'CRYPTO' ? '涨跌幅为近24小时' : ''].filter(Boolean).join(' · '), !!status);
           const pos = state.portfolio.find(p => p.fullCode === fullCode);
           const trades = pos ? pos.trades : [];
           ChartManager.renderKline(klines, trades, {
@@ -701,7 +741,7 @@
       } catch (err) {
         if (requestId !== state._chartRequestSeq) return;
         console.error('[loadChart] error:', err);
-        state._chartStatus = `加载失败：${err.message || '请求失败'}`;
+        setChartStatus(`加载失败：${err.message || '请求失败'}`, true);
       }
 
       try {
@@ -717,21 +757,21 @@
         console.error('[loadChart] quote fetch error for', fullCode, ':', err.message);
       }
     } finally {
-      const hasNewerRequest = requestId !== state._chartRequestSeq;
-      state._loadingChart = false;
-      if (hasNewerRequest && state.currentStock) {
-        setTimeout(() => {
-          if (!state._loadingChart) loadChart();
-        }, 0);
-      }
+      if (requestId === state._chartRequestSeq) state._loadingChart = false;
     }
+  }
+
+  function setChartStatus(text, retry = false) {
+    state._chartStatus = text;
+    document.getElementById('chartStatusText').textContent = text;
+    document.getElementById('chartRetryBtn').hidden = !retry;
   }
 
   function updateStockDisplay(q) {
     const baseName = `${q.name || state.currentStock?.name || q.code || ''} (${q.code || state.currentStock?.code || ''})`;
-    document.getElementById('stockName').textContent = state._chartStatus ? `${baseName} · ${state._chartStatus}` : baseName;
+    document.getElementById('stockName').textContent = baseName;
     const priceEl = document.getElementById('stockPrice');
-    priceEl.textContent = formatPrice(q.price, q.market);
+    priceEl.textContent = formatPrice(q.price, q.market, q.kind);
     const sign = q.change >= 0 ? '+' : '';
     const changeEl = document.getElementById('stockChange');
     changeEl.textContent = `${sign}${Number(q.change || 0).toFixed(2)} (${sign}${Number(q.changePercent || 0).toFixed(2)}%)`;
@@ -742,19 +782,30 @@
   }
 
   function showStockInfo(stock) {
+    if (state.currentStock?.fullCode !== stock.fullCode) {
+      ++state._chartRequestSeq;
+      state._loadingChart = false;
+      ChartManager.clearMain();
+    }
     state.currentStock = stock;
-    state._chartStatus = '';
+    state.chartSelections[state.chartSource] = stock.fullCode;
+    document.querySelectorAll('.market-item').forEach(btn => btn.classList.toggle('active', btn.dataset.fullCode === stock.fullCode));
+    setChartStatus('');
     DB.set('currentStock', stock);
     ChartManager.setTimeContext(stock && stock.market, state.settings);
     updateMarketTime();
     document.getElementById('stockName').textContent = `${stock.name} (${stock.code})`;
     document.getElementById('stockPrice').textContent = '--';
     document.getElementById('stockChange').textContent = '--';
+    document.getElementById('stockVol').textContent = '';
   }
 
   function clearStockDisplay() {
+    ++state._chartRequestSeq;
+    state._loadingChart = false;
     state.currentStock = null;
-    state._chartStatus = '';
+    document.querySelectorAll('.market-item').forEach(btn => btn.classList.remove('active'));
+    setChartStatus(state.chartSource === 'market' ? '尚未选择市场标的，请在设置中勾选指数或币种' : '');
     document.getElementById('stockName').textContent = '--';
     document.getElementById('stockPrice').textContent = '--';
     document.getElementById('stockChange').textContent = '--';
@@ -1016,11 +1067,10 @@
         stock.name = q.name;
         DB.set('watchlist', state.watchlist);
       }
-      row.addEventListener('click', (e) => {
+      row.addEventListener('click', async (e) => {
         if (e.target.closest('.wl-action')) return;
-        showStockInfo(stock);
+        await switchChartSource('watchlist', stock.fullCode);
         switchTab('chart');
-        addChartStock(stock);
       });
       row.querySelector('.wl-jump').addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1177,8 +1227,9 @@
       card.appendChild(actions);
       card.appendChild(tradesWrap);
 
-      card.querySelector('.view-chart').addEventListener('click', () => {
-        showStockInfo(pos); addChartStock(pos); switchTab('chart');
+      card.querySelector('.view-chart').addEventListener('click', async () => {
+        await switchChartSource('portfolio', pos.fullCode);
+        switchTab('chart');
       });
       card.querySelector('.add-trade').addEventListener('click', () => openPositionModal(pos));
       card.querySelector('.show-trades').addEventListener('click', () => toggleTrades(pos));
@@ -1537,8 +1588,13 @@
         cb.checked = selected.has(idx.secid);
         cb.addEventListener('change', async () => {
           const checked = [...container.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value);
-          state.settings.marketIndices = checked.length ? checked : MarketAPI.DEFAULT_SELECTED;
+          state.settings.marketIndices = checked;
           await DB.set('settings', state.settings);
+          if (state.chartSource === 'market') {
+            await rebuildChartChips();
+            if (state.currentStock) loadChart();
+            refreshChartQuotes();
+          }
           refreshMarketBar();
         });
         lbl.appendChild(cb);
@@ -1552,47 +1608,50 @@
   async function refreshMarketBar() {
     const bar = document.getElementById('marketBar');
     if (!bar) return;
-    try {
-      const interval = state.settings.refreshInterval || 10;
-      const data = await MarketAPI.fetchAll(state.settings.marketIndices, interval * 1000);
-      if (!data || !data.length) {
-        const reason = `marketIndices=${JSON.stringify(state.settings.marketIndices || MarketAPI.DEFAULT_SELECTED)}`;
-        console.warn('[Market] refreshMarketBar empty data:', reason);
-        bar.innerHTML = '';
-        const info = document.createElement('div');
-        info.className = 'market-bar-loading';
-        info.textContent = '大盘数据加载失败（网络/接口异常）';
-        bar.appendChild(info);
+    const requestId = ++state._marketRequestSeq;
+    const stocks = MarketAPI.getChartStocks(state.settings.marketIndices);
+    const render = (quotes = {}) => {
+      bar.replaceChildren();
+      if (!stocks.length) {
+        bar.textContent = '未选择市场标的，可在设置中勾选';
         return;
       }
-      bar.innerHTML = '';
-      for (const item of data) {
-        const fmt = MarketAPI.formatChange(item);
-        if (!fmt) continue;
-        const cls = item.change >= 0 ? 'price-up' : 'price-down';
-        const div = document.createElement('div');
-        div.className = `market-item ${cls}`;
-        const name = document.createElement('span');
-        name.className = 'market-name';
-        name.textContent = item.name;
-        const price = document.createElement('span');
-        price.className = 'market-price';
-        price.textContent = fmt.priceStr;
-        const change = document.createElement('span');
-        change.className = 'market-change';
-        change.textContent = fmt.changeStr;
-        div.appendChild(name);
-        div.appendChild(price);
-        div.appendChild(change);
-        bar.appendChild(div);
+      for (const stock of stocks) {
+        const fresh = quotes[stock.secid];
+        const item = fresh || state.marketQuotes[stock.secid];
+        const fmt = item && MarketAPI.formatChange(item);
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.dataset.fullCode = stock.fullCode;
+        button.className = 'market-item' + (item ? (item.change >= 0 ? ' price-up' : ' price-down') : '') + (!fresh ? ' quote-missing' : '');
+        button.classList.toggle('active', state.currentStock?.fullCode === stock.fullCode);
+        button.title = `查看${stock.name}K线` + (!fresh ? ' · 报价暂不可用' : '') + (stock.market === 'CRYPTO' ? ' · 涨跌幅为近24小时' : '');
+        button.addEventListener('click', async () => {
+          await switchChartSource('market', stock.fullCode);
+          switchTab('chart');
+        });
+        for (const [className, value] of [['market-name', stock.name], ['market-price', fmt?.priceStr || '--'], ['market-change', fresh ? fmt?.changeStr || '--' : '暂不可用']]) {
+          const span = document.createElement('span');
+          span.className = className;
+          span.textContent = value;
+          button.appendChild(span);
+        }
+        bar.appendChild(button);
       }
+    };
+    // 定时刷新期间保留上一帧报价，首次加载先生成可点击的入口。
+    if (!bar.querySelector('.market-item') || stocks.map(stock => stock.fullCode).join(',') !== [...bar.querySelectorAll('.market-item')].map(btn => btn.dataset.fullCode).join(',')) render();
+    try {
+      const interval = state.settings.refreshInterval ?? 10;
+      const data = await MarketAPI.fetchAll(state.settings.marketIndices, interval * 1000);
+      if (requestId !== state._marketRequestSeq) return;
+      const quotes = Object.fromEntries(data.map(item => [item.secid, item]));
+      Object.assign(state.marketQuotes, quotes);
+      render(quotes);
     } catch (err) {
+      if (requestId !== state._marketRequestSeq) return;
       console.error('[Market] refreshMarketBar error:', err);
-      bar.innerHTML = '';
-      const info = document.createElement('div');
-      info.className = 'market-bar-loading';
-      info.textContent = '大盘数据加载失败';
-      bar.appendChild(info);
+      render();
     }
   }
 
@@ -2344,7 +2403,7 @@
       state.refreshTimer = setInterval(async () => {
         if (state.currentTab === 'chart') {
           // 历史 K 线不需要随每次报价刷新重复请求；分时图才需要重新拉取。
-          if (state.currentStock && state.currentPeriod === 'realtime') await loadChart();
+          if (state.currentStock && (state.currentPeriod === 'realtime' || state.chartSource === 'market') && !state._loadingChart) await loadChart();
           await refreshChartQuotes();
         }
         else if (state.currentTab === 'watchlist') {
@@ -2366,7 +2425,7 @@
 
   function startMarketRefresh() {
     stopMarketRefresh();
-    const interval = state.settings.refreshInterval || 10;
+    const interval = state.settings.refreshInterval ?? 10;
     if (interval > 0) {
       state.marketTimer = setInterval(refreshMarketBar, interval * 1000);
     }
@@ -2524,6 +2583,9 @@
       btn.classList.toggle('active', !!state.indicators[btn.dataset.ind]);
     });
     state.currentStock = stored.currentStock || null;
+    state.chartSource = state.currentStock?.secid || state.currentStock?.fullCode?.startsWith('INDEX:') ? 'market' : 'portfolio';
+    state.chartSelections = {};
+    state.chartExtras = { portfolio: [], watchlist: [] };
     state.chartStocks = [];
     state.quotes = {};
     state._klineCache = {};
@@ -2756,6 +2818,14 @@
         state.portfolio = changes.portfolio.newValue || [];
         if (state.chartSource === 'portfolio') rebuildChartChips();
       }
+      if (changes.settings && JSON.stringify(changes.settings.newValue?.marketIndices) !== JSON.stringify(state.settings.marketIndices)) {
+        state.settings.marketIndices = changes.settings.newValue?.marketIndices;
+        if (state.chartSource === 'market') rebuildChartChips().then(() => {
+          if (state.currentStock) loadChart();
+          refreshChartQuotes();
+        });
+        refreshMarketBar();
+      }
     });
   }
 
@@ -2769,12 +2839,14 @@
     // Period buttons
     document.querySelectorAll('.period-btn').forEach(btn => {
       btn.addEventListener('click', () => {
+        if (btn.disabled) return;
         document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         state.currentPeriod = btn.dataset.period;
         loadChart();
       });
     });
+    document.getElementById('chartRetryBtn').addEventListener('click', () => loadChart());
 
     const summaryToggle = document.getElementById('toggleSummaryBtn');
     const summaryTable = document.getElementById('stockSummaryTable');
@@ -2801,7 +2873,7 @@
         state.settings = settings;
         DB.set('settings', settings);
         // 复用缓存的 K 线数据切换
-        const klines = state.currentStock && state._klineCache[state.currentStock.fullCode];
+        const klines = state.currentStock && state._klineCacheByPeriod[`${state.currentStock.fullCode}:${state.currentPeriod}`];
         if (klines) {
           ChartManager.toggleIndicator(name, klines);
         } else {
@@ -2810,20 +2882,9 @@
       });
     });
 
-    // Chart source toggle (portfolio / watchlist)
+    // Chart source toggle
     document.querySelectorAll('.src-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        document.querySelectorAll('.src-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        state.chartSource = btn.dataset.src;
-        await rebuildChartChips();
-        if (state.currentStock) {
-          showStockInfo(state.currentStock);
-          loadChart();
-        } else {
-          clearStockDisplay();
-        }
-      });
+      btn.addEventListener('click', () => switchChartSource(btn.dataset.src));
     });
 
     // Chart add stock button

@@ -1,17 +1,21 @@
 # Stock Pulse — K 线行情与持仓助手
 
-![Version](https://img.shields.io/badge/version-1.2.1-4fc3f7)
+![Version](https://img.shields.io/badge/version-1.3.0-4fc3f7)
 ![Chrome](https://img.shields.io/badge/Chrome-%E2%89%A5114-4285F4)
 ![Manifest](https://img.shields.io/badge/Manifest-V3-34A853)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-Stock Pulse 是一款运行在 Chrome Side Panel 中的本地优先股票工具，覆盖 A 股、港股、美股等市场以及主流加密资产。它把实时行情、K 线、自选股、交易流水、实际持仓收益、AI 分析和截图 OCR 集成在一个紧凑界面中。
+Stock Pulse 是一款运行在 Chrome Side Panel 中的本地优先行情与持仓工具，覆盖多市场股票、全球指数和主流加密资产。点击顶部指数或 BTC/ETH，即可在“市场”分组查看日、周、月、年 K；也可以切换到持仓和自选，继续查看个股行情、管理交易流水、比较实际收益或运行 AI 分析和截图 OCR。
 
 > 本项目用于行情查看和个人研究，不构成投资建议。免费数据源可能受网络、频率限制或服务可用性影响。
 
 ## 界面预览
 
 所有图片均为插件实际运行界面，原图位于 [`docs/screenshots`](docs/screenshots)。
+
+![v1.3.0 市场分组与指数 K 线](docs/screenshots/07-market-kline.png)
+
+上图展示点击顶部指数后的市场 K 线主图；原有功能截图保留如下。
 
 | 行情总览与 K 线 | 自选股管理 |
 | --- | --- |
@@ -30,6 +34,7 @@ Stock Pulse 是一款运行在 Chrome Side Panel 中的本地优先股票工具�
 | 模块 | 主要能力 |
 | --- | --- |
 | 行情与 K 线 | 分时、日 K、周 K、月 K、年 K；MA5/10/20；BOLL、MACD、KDJ；成交量；买卖点标记 |
+| 全球市场 | 点击顶部指数或 BTC/ETH 查看主图；勾选项同步到市场列表；支持日、周、月、年 K，暂不开放市场分时 |
 | 多标的概览 | 最新价、涨跌幅、成交量、30 日走势，多列排序，失败状态与单项重试 |
 | 自选股 | 搜索、批量文本导入、截图 OCR、右键菜单加入、分组、排序、外部行情跳转 |
 | 持仓 | 买卖流水、手续费、印花税、持仓成本、市值、当日盈亏、累计盈亏、买卖点展示 |
@@ -49,8 +54,11 @@ Stock Pulse 是一款运行在 Chrome Side Panel 中的本地优先股票工具�
 - BOLL、MACD、KDJ 指标可独立开关。
 - 行情概览同时展示多只股票，支持按代码、名称、价格和涨跌幅排序。
 - K 线上标记持仓买入、卖出价格和时间。
-- 历史 K 线使用缓存，自动刷新只更新实时报价；请求失败时保留上次成功数据。
+- 个股自动刷新更新实时报价与分时；市场分组同时刷新当前 K 线，请求失败时保留并标明上次成功数据。
 - 顶部指数条可自定义上证、深证、创业板、恒生、美股等指数，修改后立即生效。
+- 点击顶部指数或 BTC/ETH 可直接在主图查看 K 线；“市场”分组跟随顶部勾选项，支持日、周、月、年 K，暂不开放分时。
+- “市场 / 持仓 / 自选”分别记住本次使用时上次选择的标的；加载失败提供重试，有缓存时标明使用上次成功数据。
+- 市场图表显示最近一根 K 线的日期；BTC/ETH 涨跌幅采用近 24 小时口径。
 
 ### 自选股
 
@@ -104,11 +112,19 @@ Stock Pulse 是一款运行在 Chrome Side Panel 中的本地优先股票工具�
 
 ### 从发布包安装
 
-1. 下载对应版本 ZIP 并解压。
+1. 从 [v1.3.0 Release](https://github.com/LeeXN/stock-pulse/releases/tag/v1.3.0) 下载 `stock-pulse-v1.3.0-install.zip` 并解压。
 2. 打开 `chrome://extensions/`。
 3. 开启右上角“开发者模式”。
-4. 点击“加载已解压的扩展程序”，选择解压后的目录。
+4. 点击“加载已解压的扩展程序”，选择解压后的 `stock-pulse-v1.3.0` 文件夹（里面直接包含 `manifest.json`）。
 5. 点击工具栏中的 Stock Pulse 图标打开 Side Panel。
+
+构建发布包：
+
+```bash
+python3 scripts/build_release.py --crx
+```
+
+文件生成在 `dist/v1.3.0/`。手动安装使用 `*-install.zip`；商店上传使用 `*-webstore.zip`。CRX 用于允许商店外安装的环境；普通 Windows/macOS Chrome 请按上面的解压加载流程安装。
 
 ### 从源码安装
 
@@ -120,6 +136,14 @@ cd stock-pulse
 然后按上面的开发者模式步骤选择仓库根目录。需要 Chrome 114 或更高版本。
 
 ## 常用操作
+
+### 查看市场 K 线
+
+1. 在设置中勾选需要显示的指数和币种，顶部指数条与“市场”列表会同步更新。
+2. 点击任意顶部指数或 BTC/ETH，自动进入 K 线页的“市场”分组并显示该标的大图。
+3. 切换日、周、月、年 K，或开启 BOLL、MACD、KDJ；市场分组第一版暂不开放分时。
+4. 在“市场 / 持仓 / 自选”之间切换，恢复各分组本次使用时上次选择的标的。
+5. 加载失败可点击“重试”；显示缓存时会标明上次成功数据与最近一根 K 线日期。BTC/ETH 涨跌幅为近 24 小时口径。
 
 ### 添加自选股
 
@@ -156,16 +180,16 @@ cd stock-pulse
 
 默认组合为“腾讯报价 + 东方财富 K 线”。部分免费接口存在限流或暂时不可用的情况，可在设置中切换 Provider 后重试。
 
-## v1.2.1 更新摘要
+市场分组的指数使用东方财富，BTC/ETH 使用 Binance，不跟随个股数据源设置。
 
-- 修复批量交易导入部分写入、重复导入、无持仓/超持仓卖出和错误市场匹配。
-- 修复美股 K 线备用市场代码未执行、海外市场 Provider 降级和年 K 聚合问题。
-- 统一 K 线、成交价和实时价的未复权口径。
-- 修复右键加入自选在面板关闭时丢失、导入备份后运行时状态未刷新等问题。
-- 加强 OCR 视觉模型校验、CSV 引号/换行解析、密钥备份保护和隐私披露。
-- 改善窄屏布局、搜索、错误状态、单项重试和设置可用性。
+## v1.3.0 更新摘要
 
-完整内容见 [RELEASE_NOTES_v1.2.1.md](RELEASE_NOTES_v1.2.1.md) 和 [CHANGELOG.md](CHANGELOG.md)。Chrome Web Store 可直接使用的介绍文案与图片清单见 [docs/CHROME_WEB_STORE_LISTING.md](docs/CHROME_WEB_STORE_LISTING.md)。
+- 点击顶部指数或 BTC/ETH，进入“市场”分组查看日、周、月、年 K。
+- 列表跟随顶部勾选项，各分组记住上次选择，指数显示点位。
+- 增加数据日期、缓存失败提示和重试，修复旧请求覆盖图表、缺失指数回退和关闭刷新无效。
+- 新增安装 ZIP、商店发布 ZIP 和签名 CRX 的构建流程。
+
+完整内容见 [RELEASE_NOTES_v1.3.0.md](RELEASE_NOTES_v1.3.0.md) 和 [CHANGELOG.md](CHANGELOG.md)。商店文案见 [docs/CHROME_WEB_STORE_LISTING.md](docs/CHROME_WEB_STORE_LISTING.md)。
 
 ## 项目结构
 
@@ -194,6 +218,8 @@ stock-pulse/
 │   └── app.js          # 页面状态与交互控制器
 ├── lib/
 │   └── lightweight-charts.standalone.js
+├── scripts/
+│   └── build_release.py # 运行文件白名单、测试、ZIP 和可选 CRX 打包
 └── icons/
 ```
 

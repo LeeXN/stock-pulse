@@ -127,6 +127,17 @@ const MarketAPI = {
     return this.normalizeSecids(secids).map(id => all.find(i => i.secid === id)).filter(Boolean);
   },
 
+  /** 保留指数身份，避免上证指数与深市个股、海外指数与海外个股的代码冲突。 */
+  getChartStocks(secids = this.DEFAULT_SELECTED) {
+    return this.getIndicesBySecids(secids).map(idx => ({
+      ...idx,
+      name: idx.market === 'CRYPTO' ? `${idx.code} / USDT` : idx.name,
+      fullCode: this._isCryptoSecid(idx.secid) ? idx.secid : `INDEX:${idx.secid}`,
+      kind: this._isCryptoSecid(idx.secid) ? 'crypto' : 'index',
+      fromSource: true
+    }));
+  },
+
   /**
    * 从 ulist.np/get 响应中解析单个指数数据
    */
@@ -186,7 +197,7 @@ const MarketAPI = {
       try {
         let data;
         try {
-          const r = await fetch(url);
+          const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
           data = await r.json();
         } catch (innerErr) {
@@ -220,6 +231,10 @@ const MarketAPI = {
           }).filter(Boolean);
           results.push(...parsed);
         }
+        // HTTP 成功也可能只返回部分标的，缺失项仍需逐个回退。
+        const received = new Set(results.map(item => item.secid));
+        const missing = normalIndices.filter(idx => !received.has(idx.secid));
+        if (missing.length) results.push(...await this._fetchAllFallback(missing, ttl, force));
       } catch (e) {
         console.warn('[Market] fetchAll normal indices error:', e.message || String(e));
         const fallback = await this._fetchAllFallback(normalIndices, ttl, force);
@@ -257,7 +272,7 @@ const MarketAPI = {
         try {
           let data;
           try {
-            const r = await fetch(url);
+            const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             data = await r.json();
           } catch (innerErr) {
@@ -274,6 +289,7 @@ const MarketAPI = {
               const ulistResult = await this._fetchUlist([idx.secid]);
               if (ulistResult && ulistResult[0]) return ulistResult[0];
             }
+            if (attempt < 2) continue;
             return null;
           }
           const d = data.data;
@@ -316,7 +332,7 @@ const MarketAPI = {
     try {
       let data;
       try {
-        const r = await fetch(url);
+        const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         data = await r.json();
       } catch (innerErr) {

@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Stock Pulse - K线行情助手",
   "short_name": "Stock Pulse",
-  "version": "1.2.1",
-  "description": "轻量级股票K线行情助手，支持多市场行情、交易流水导入、实际持仓收益对比、时区适配和 AI 智能分析",
+  "version": "1.3.0",
+  "description": "浏览器侧边栏行情与持仓助手，支持全球指数与 BTC/ETH K 线、多市场股票、自选分组、交易流水、AI 分析和视觉 OCR",
   "minimum_chrome_version": "114",
   "permissions": [
     "storage",

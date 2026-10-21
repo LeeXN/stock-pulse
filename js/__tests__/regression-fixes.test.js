@@ -8,7 +8,7 @@ function baseSandbox(extra = {}) {
   return {
     console: { log() {}, warn() {}, error() {} },
     Intl, Date, Math, Number, String, Set, Object, Array, RegExp,
-    parseFloat, parseInt, isNaN, TextDecoder, ...extra
+    parseFloat, parseInt, isNaN, TextDecoder, AbortSignal, ...extra
   };
 }
 
