@@ -1,3 +1,6 @@
 .DS_Store
 Thumbs.db
 *.log
+.local/
+dist/
+__pycache__/

@@ -1,4 +1,4 @@
-# Chrome Web Store 上架素材 — Stock Pulse v1.2.1
+# Chrome Web Store 上架素材 — Stock Pulse v1.3.0
 
 本文件中的文案可直接复制到 Chrome Web Store Developer Dashboard。实际提交时请同时更新“商店详情”和“隐私权规范”页面。
 
@@ -14,15 +14,18 @@ Stock Pulse - K线行情助手
 
 **简短说明**
 
-轻量级股票 K 线与持仓助手，支持多市场行情、交易流水导入、真实收益对比、AI Skills 和视觉 OCR。
+浏览器侧边栏行情与持仓助手，支持全球指数与 BTC/ETH K 线、多市场股票、自选分组、交易流水、AI 分析和视觉 OCR。
 
 ## 详细说明
 
-Stock Pulse 是一款运行在 Chrome Side Panel 中的本地优先行情与持仓工具。无需离开当前网页，即可查看 A 股、港股、美股等市场行情、分时与多周期 K 线，并管理个人自选股和交易流水。
+Stock Pulse 是一款运行在 Chrome Side Panel 中的本地优先行情与持仓工具。无需离开当前网页，即可查看多市场股票、全球指数和 BTC/ETH K 线。点击顶部指数或币种，自动进入“市场”分组查看主图；列表跟随设置勾选项，并可在市场、持仓和自选之间切换。
 
 核心功能：
 
-- 分时、日 K、周 K、月 K、年 K，以及 MA、BOLL、MACD、KDJ 和成交量。
+- 个股分时、日 K、周 K、月 K、年 K，以及 MA、BOLL、MACD、KDJ 和成交量。
+- 点击顶部指数或 BTC/ETH 查看市场 K 线；市场列表跟随勾选项，支持日、周、月、年 K，暂不开放市场分时。
+- 分组分别记住本次使用时上次选择的标的；指数显示点位，BTC/ETH 标明近 24 小时涨跌幅。
+- 图表显示最近一根 K 线日期，失败时保留并标明缓存数据，支持手动重试。
 - 多标的行情总览，展示最新价、涨跌幅、成交量和 30 日走势。
 - 自选股搜索、批量导入、分组、排序和浏览器右键快捷加入。
 - 买入/卖出交易流水、手续费、印花税、持仓成本、市值和盈亏计算。
@@ -42,28 +45,27 @@ Stock Pulse 是一款运行在 Chrome Side Panel 中的本地优先行情与持�
 
 Stock Pulse 用于行情查看和个人研究，不构成投资建议。免费行情接口可能受到网络状态、频率限制或服务可用性影响。
 
-## v1.2.1 更新内容
+## v1.3.0 更新内容
 
-- 批量交易导入改为整批校验和原子写入，避免部分导入。
-- 阻止超持仓卖出，支持重复流水去重和严格日期/数值校验。
-- 修复错误股票标的、股票代码误匹配加密货币和右键加入自选丢失。
-- 修复美股 K 线备用市场、海外行情降级、年 K 聚合和缓存更新。
-- K 线、成交价和实时价统一为未复权口径。
-- OCR 必须使用视觉模型，CSV 支持引号和多行字段。
-- 备份默认移除密钥，并补充 OCR 隐私披露。
-- 改善窄屏布局、错误状态、重试、搜索和设置体验。
+- 新增“市场”分组，点击顶部指数或 BTC/ETH 即可查看主图。
+- 支持日、周、月、年 K；市场分组暂不开放分时。
+- 市场列表跟随设置勾选项，各分组记住本次使用时上次选择的标的。
+- 指数显示点位，加密货币注明近 24 小时涨跌幅口径。
+- 图表显示最近一根 K 线日期，失败时提供缓存提示和重试。
+- 修复旧请求覆盖当前图表、部分指数缺失时未回退和关闭刷新无效。
+- 改善年 K 取数范围，并按周期隔离技术指标缓存。
 
 ## 详情截图
 
 Chrome Web Store 最多上传 5 张截图，推荐按以下顺序使用：
 
-1. [`01-market-overview.png`](screenshots/01-market-overview.png) — 多标的行情总览、K 线、均线和买卖点。
+1. [`07-market-kline.png`](screenshots/07-market-kline.png) — v1.3.0 全球指数、市场分组、K 线主图、数据日期和技术指标。
 2. [`02-watchlist.png`](screenshots/02-watchlist.png) — 自选股、排序、批量操作和实时报价。
 3. [`03-portfolio.png`](screenshots/03-portfolio.png) — 持仓汇总、成本、市值和盈亏。
 4. [`04-batch-import-preview.png`](screenshots/04-batch-import-preview.png) — CSV/TSV 交易流水解析与导入前预览。
 5. [`05-ai-skills.png`](screenshots/05-ai-skills.png) — 内置 AI Skills 和自定义关注重点。
 
-备用图片：[`06-settings-providers.png`](screenshots/06-settings-providers.png) — 多 Provider、OCR 和 AI 设置。
+备用图片：[`01-market-overview.png`](screenshots/01-market-overview.png) — 原有多标的行情与个股 K 线；[`06-settings-providers.png`](screenshots/06-settings-providers.png) — 多 Provider、OCR 和 AI 设置。
 
 全部截图为 1280×800 PNG、方角、无外边距，适合作为商店详情图。上传前可按目标语言选择对应图片，避免图片中出现任何真实账户、密钥或个人资产信息。
 
@@ -88,12 +90,12 @@ Chrome Web Store 最多上传 5 张截图，推荐按以下顺序使用：
 
 ## 上架检查清单
 
-- [ ] 上传 `stock-pulse-v1.2.1-chrome.zip`。
+- [ ] 上传 `dist/v1.3.0/stock-pulse-v1.3.0-webstore.zip`。
 - [ ] 确认压缩包根目录直接包含 `manifest.json`。
-- [ ] 确认 manifest 版本为 `1.2.1`，高于商店当前版本。
+- [ ] 确认 manifest 版本为 `1.3.0`，高于商店当前版本。
 - [ ] 上传 128×128 商店图标 `icons/icon128.png`。
 - [ ] 按推荐顺序上传 5 张 1280×800 详情截图。
-- [ ] 粘贴简短说明、详细说明和 v1.2.1 更新内容。
+- [ ] 粘贴简短说明、详细说明和 v1.3.0 更新内容。
 - [ ] 更新隐私政策 URL 和隐私权规范声明。
 - [ ] 复核 Host 权限与数据使用披露。
 - [ ] 使用未登录、无历史数据的 Chrome Profile 做一次安装验证。

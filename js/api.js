@@ -305,7 +305,8 @@ const EastmoneyAPI = {
 
   async getKline(fullCode, period = 'daily', count = 120) {
     const [market, code] = fullCode.split(':');
-    let secid = this._toSecid(market, code);
+    // 指数与个股的市场编号不同，INDEX 标识保留已经验证的完整 secid。
+    let secid = market === 'INDEX' ? code : this._toSecid(market, code);
     if (!secid) { console.warn('[Eastmoney getKline]', fullCode, '-> no secid'); return []; }
     console.log('[Eastmoney getKline]', fullCode, '-> secid:', secid, 'period:', period, 'count:', count);
 
@@ -313,11 +314,13 @@ const EastmoneyAPI = {
     const klt = kltMap[period] || 101;
 
     // 使用未复权价格，才能和用户录入的券商成交价、实时价保持同一口径。
-    const buildUrl = (sid) => `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${sid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57&klt=${klt}&fqt=0&lmt=${count}&end=20500101&_=${Date.now()}`;
+    const limit = period === 'yearly' ? count * 12 : count;
+    const buildUrl = (sid) => `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${encodeURIComponent(sid)}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57&klt=${klt}&fqt=0&lmt=${limit}&end=20500101&_=${Date.now()}`;
 
     let data;
     try {
-      const resp = await fetch(buildUrl(secid));
+      const resp = await fetch(buildUrl(secid), { signal: AbortSignal.timeout(15000) });
+      if (resp.ok === false) throw new Error(`HTTP ${resp.status}`);
       data = await resp.json();
     } catch (e) {
       console.warn('[Eastmoney getKline]', fullCode, 'direct fetch failed:', e.message, ', trying background...');
@@ -333,11 +336,12 @@ const EastmoneyAPI = {
 
     console.log('[Eastmoney getKline]', fullCode, '-> response rc:', data?.rc, 'hasKlines:', !!data?.data?.klines, 'klineCount:', data?.data?.klines?.length);
     // US fallback: try 106 if 105 returns no data
-    if ((!data.data || !data.data.klines) && market === 'US') {
+    if ((!data?.data || !data.data.klines) && market === 'US') {
       console.log('[Eastmoney getKline]', fullCode, '-> 105 returned no data, trying 106');
       secid = `106.${code}`;
       try {
-        const resp2 = await fetch(buildUrl(secid));
+        const resp2 = await fetch(buildUrl(secid), { signal: AbortSignal.timeout(15000) });
+        if (resp2.ok === false) throw new Error(`HTTP ${resp2.status}`);
         data = await resp2.json();
       } catch (_) {
         try {
@@ -346,8 +350,8 @@ const EastmoneyAPI = {
         } catch (_) {}
       }
     }
-    if (!data.data || !data.data.klines) {
-      console.warn('[Eastmoney getKline]', fullCode, '-> no klines data. Full response:', JSON.stringify(data).substring(0, 300));
+    if (!data?.data || !data.data.klines) {
+      console.warn('[Eastmoney getKline]', fullCode, '-> no klines data. Full response:', (JSON.stringify(data) || 'null').substring(0, 300));
       return [];
     }
     let klines = data.data.klines.map(line => {
@@ -358,7 +362,7 @@ const EastmoneyAPI = {
         amount: parseFloat(p[6]), turnover: parseFloat(p[10]) || 0
       };
     });
-    if (period === 'yearly') klines = this._aggregateYearly(klines);
+    if (period === 'yearly') klines = this._aggregateYearly(klines).slice(-count);
     return klines;
   },
 
@@ -477,14 +481,14 @@ const CryptoAPI = {
 
   async _binance24h(symbol) {
     const url = `${this._binanceBase}/ticker/24hr?symbol=${encodeURIComponent(symbol)}`;
-    const resp = await fetch(url);
+    const resp = await fetch(url, { signal: AbortSignal.timeout(15000) });
     if (!resp.ok) throw new Error(`Binance ticker HTTP ${resp.status}`);
     return await resp.json();
   },
 
   async _binanceKlines(symbol, interval, limit) {
     const url = `${this._binanceBase}/klines?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=${limit}`;
-    const resp = await fetch(url);
+    const resp = await fetch(url, { signal: AbortSignal.timeout(15000) });
     if (!resp.ok) throw new Error(`Binance kline HTTP ${resp.status}`);
     return await resp.json();
   },
@@ -651,7 +655,7 @@ const CryptoAPI = {
     if (!symbol) return [];
     const intervalMap = { daily: '1d', weekly: '1w', monthly: '1M', yearly: '1M' };
     const interval = intervalMap[period] || '1d';
-    const rows = await this._binanceKlines(symbol, interval, Math.min(Math.max(count, 20), 1000));
+    const rows = await this._binanceKlines(symbol, interval, Math.min(Math.max(period === 'yearly' ? count * 12 : count, 20), 1000));
     let klines = rows.map(row => ({
       time: new Date(Number(row[0])).toISOString().slice(0, 10),
       open: Number(row[1]) || 0,
@@ -677,7 +681,7 @@ const CryptoAPI = {
           yd.amount += d.amount;
         }
       }
-      klines = Object.values(yearMap).sort((a, b) => a.time.localeCompare(b.time));
+      klines = Object.values(yearMap).sort((a, b) => a.time.localeCompare(b.time)).slice(-count);
     }
     return klines;
   },
@@ -1251,13 +1255,21 @@ const StockAPI = {
 
   async getQuotes(codes) {
     if (!codes.length) return {};
-    const domestic = [], intl = [], crypto = [];
+    const domestic = [], intl = [], crypto = [], indices = [];
     for (const c of codes) {
-      if (this._isCrypto(c)) crypto.push(c);
+      if (c.startsWith('INDEX:')) indices.push(c);
+      else if (this._isCrypto(c)) crypto.push(c);
       else if (this._isIntl(c)) intl.push(c);
       else domestic.push(c);
     }
     const results = {};
+    if (indices.length) {
+      const items = await MarketAPI.fetchAll(indices.map(code => code.slice(6)));
+      for (const item of items) {
+        const stock = MarketAPI.getChartStocks([item.secid])[0];
+        if (stock) results[stock.fullCode] = { ...item, ...stock };
+      }
+    }
     if (domestic.length) {
       const p = this._getQuoteProvider(false);
       const err = this._checkRequirements(p, 'quote');
@@ -1282,7 +1294,12 @@ const StockAPI = {
     return results;
   },
 
-  async getKline(fullCode, period, count) {
+  async getKline(fullCode, period = 'daily', count = 120) {
+    if (fullCode.startsWith('INDEX:')) {
+      if (!MarketAPI.getIndicesBySecids([fullCode.slice(6)]).length) throw new Error('不支持的市场指数');
+      if (!['daily', 'weekly', 'monthly', 'yearly'].includes(period)) throw new Error('市场分组暂不支持分时');
+      return EastmoneyAPI.getKline(fullCode, period, count);
+    }
     if (this._isCrypto(fullCode)) {
       return CryptoAPI.getKline(fullCode, period, count);
     }
@@ -1297,6 +1314,7 @@ const StockAPI = {
   },
 
   async getRealtime(fullCode) {
+    if (fullCode.startsWith('INDEX:')) throw new Error('市场分组暂不支持分时');
     if (this._isCrypto(fullCode)) {
       return CryptoAPI.getRealtime(fullCode);
     }

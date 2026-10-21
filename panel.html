@@ -61,6 +61,7 @@
         <button class="ind-btn ai-btn" id="chartAiBtn" title="AI 解读当前 K 线">AI</button>
       </div>
       <div class="chart-source-toggle">
+        <button class="src-btn" data-src="market" title="显示顶部已勾选的指数和币种">市场</button>
         <button class="src-btn active" data-src="portfolio" title="显示持仓股">持仓</button>
         <button class="src-btn" data-src="watchlist" title="显示自选股">自选</button>
       </div>
@@ -80,6 +81,10 @@
       <span class="chart-crosshair-info" id="chartCrosshairInfo">移动光标查看 OHLC</span>
     </div>
     <div class="chart-legend" id="chartLegend"></div>
+    <div class="chart-status" role="status">
+      <span id="chartStatusText"></span>
+      <button class="secondary-btn" id="chartRetryBtn" hidden>重试</button>
+    </div>
     <!-- Chart container -->
     <div id="chartContainer"></div>
   </div>

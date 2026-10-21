@@ -10,7 +10,7 @@ function loadApiSandbox() {
     console: { log() {}, warn() {}, error() {} },
     fetch: async () => ({ ok: true, json: async () => ({}) }),
     chrome: { runtime: { sendMessage: async () => ({}) } },
-    TextDecoder,
+    TextDecoder, AbortSignal,
     setTimeout,
     clearTimeout
   };
@@ -25,6 +25,7 @@ function loadApiSandbox() {
 function loadMarketSandbox(extra = {}) {
   const code = fs.readFileSync(path.join(__dirname, '..', 'market.js'), 'utf8');
   const sandbox = {
+    AbortSignal,
     console: { log() {}, warn() {}, error() {} },
     fetch: async () => ({ ok: true, json: async () => ({ data: { diff: [] } }) }),
     chrome: { runtime: { sendMessage: async () => ({}) } },
