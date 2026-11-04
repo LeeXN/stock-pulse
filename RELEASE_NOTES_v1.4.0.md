@@ -36,7 +36,7 @@ python3 scripts/build_release.py --crx
 | `SHA256SUMS` | 安装包和上传包的 SHA-256 校验值 |
 | `BUILD.json` | 版本、构建来源、运行文件与产物哈希 |
 
-普通 Windows/macOS Chrome 的直接安装应使用 Chrome Web Store。自签名 CRX 无法绕过商店外安装限制；发布前验收请按 [README 安装步骤](README.md#安装) 加载已解压的扩展程序。
+普通 Windows/macOS Chrome 的直接安装应使用 Chrome Web Store。自签名 CRX 无法绕过商店外安装限制；发布前验收请按 [安装说明](docs/INSTALLATION.md) 加载已解压的扩展程序。
 
 更新现有解压版时，先导出备份，将新版运行文件覆盖到原扩展目录后点击“重新加载”。更换扩展 ID 会使用另一套本地存储；本地 CRX 签名身份也不等同于商店身份。商店版本应上传到原有条目。
 

@@ -47,6 +47,6 @@ PR、tag、Release 和附件都完成并核验后，才能宣布 GitHub 发布�
 
 将 `*-webstore.zip` 上传到原有商店条目，填写 [商店文案](CHROME_WEB_STORE_LISTING.md)、截图和公开隐私政策 URL，再提交审核。新上传的版本号必须高于商店当前版本。
 
-普通 Windows/macOS Chrome 的直接安装应通过商店；本地自签名 CRX 不保证可安装。发布前验收按 [README](../README.md#发布前本地验收与更新) 的解压加载流程进行。
+普通 Windows/macOS Chrome 的直接安装应通过商店；本地自签名 CRX 不保证可安装。发布前验收按 [安装说明](INSTALLATION.md#发布前本地验收与更新) 的解压加载流程进行。
 
 官方参考：[打包要求](https://developer.chrome.com/docs/webstore/prepare)、[更新商店条目](https://developer.chrome.com/docs/webstore/update)、[本地安装限制](https://developer.chrome.com/docs/extensions/how-to/distribute/install-extensions)。
