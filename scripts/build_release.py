@@ -95,6 +95,11 @@ def main():
         install = output / f'{folder_name}-install.zip'
         instructions = f'''Stock Pulse v{version} 安装说明
 
+Chrome Web Store 上传包：stock-pulse-v{version}-webstore.zip。
+签名 CRX3 包：stock-pulse-v{version}.crx（仅在启用 --crx 构建时生成）。
+普通 Windows/macOS Chrome 的直接安装应通过 Chrome Web Store；本地 CRX 不能解除浏览器安装限制。
+如需在发布前验收，请按以下步骤加载解压后的文件夹，不能直接将 ZIP 拖入 Chrome 安装。
+
 1. 将整个安装 ZIP 解压到一个长期保留的目录。
 2. Chrome 打开 chrome://extensions/；Edge 打开 edge://extensions/。
 3. 开启“开发者模式”，选择“加载已解压的扩展程序”。
@@ -102,10 +107,14 @@ def main():
 5. 点击浏览器工具栏的 Stock Pulse 图标打开侧边栏。
 
 更新已有解压版时，可先导出备份，再将新版运行文件复制到原扩展目录并点击重新加载。
-普通 Windows/macOS Chrome 对商店外 CRX 安装有限制；请使用上述解压加载方式。
+更换扩展 ID 会使用另一套本地存储；更换安装方式时需导入备份。
+Linux 等允许商店外安装的环境可在 chrome://extensions/ 开启开发者模式，拖入 CRX 后按提示确认；托管环境遵循管理员策略。
 商店发布请上传单独的 *-webstore.zip，不要上传本安装 ZIP。
 签名 CRX 使用本地签名身份，不代表原有商店条目的签名身份。
+上传商店不会由本地构建自动执行；审核通过并发布后，普通用户从商店页面安装。
 本包不包含个人设置、API Key、签名私钥、测试或开发工具文件。
+
+官方说明：https://developer.chrome.com/docs/extensions/how-to/distribute/install-extensions
 '''.encode()
         write_zip(store, contents)
         write_zip(install, {f'{folder_name}/{name}': data for name, data in contents.items()} | {'INSTALL.txt': instructions})

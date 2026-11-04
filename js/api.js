@@ -486,8 +486,9 @@ const CryptoAPI = {
     return await resp.json();
   },
 
-  async _binanceKlines(symbol, interval, limit) {
-    const url = `${this._binanceBase}/klines?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=${limit}`;
+  async _binanceKlines(symbol, interval, limit, endTime) {
+    const url = `${this._binanceBase}/klines?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=${limit}` +
+      (endTime == null ? '' : `&endTime=${endTime}`);
     const resp = await fetch(url, { signal: AbortSignal.timeout(15000) });
     if (!resp.ok) throw new Error(`Binance kline HTTP ${resp.status}`);
     return await resp.json();
@@ -655,7 +656,20 @@ const CryptoAPI = {
     if (!symbol) return [];
     const intervalMap = { daily: '1d', weekly: '1w', monthly: '1M', yearly: '1M' };
     const interval = intervalMap[period] || '1d';
-    const rows = await this._binanceKlines(symbol, interval, Math.min(Math.max(period === 'yearly' ? count * 12 : count, 20), 1000));
+    // Binance 每次最多返回 1000 根；按最早开盘时间继续往前，年 K 在完整月线合并后聚合。
+    const requested = Math.max(period === 'yearly' ? count * 12 : count, 20);
+    let rows = [];
+    let endTime;
+    while (rows.length < requested) {
+      const limit = Math.min(requested - rows.length, 1000);
+      const page = await this._binanceKlines(symbol, interval, limit, endTime);
+      if (!page.length) break;
+      const nextEnd = Number(page[0][0]) - 1;
+      if (endTime != null && nextEnd >= endTime) break;
+      rows = [...page, ...rows];
+      endTime = nextEnd;
+      if (page.length < limit) break;
+    }
     let klines = rows.map(row => ({
       time: new Date(Number(row[0])).toISOString().slice(0, 10),
       open: Number(row[1]) || 0,

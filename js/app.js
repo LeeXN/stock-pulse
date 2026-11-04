@@ -1,5 +1,5 @@
 /**
- * app.js v1.3.0 - 主控制器（市场K线、多股图表、批量/OCR导入、Side Panel）
+ * app.js v1.4.0 - 主控制器（市场K线、多股图表、批量/OCR导入、Side Panel）
  */
 (async function () {
   'use strict';
@@ -42,6 +42,7 @@
     quotes: {},
     _klineCache: {},          // 缓存最近一次 K 线数据，供指标切换时复用
     _klineCacheByPeriod: {},  // 按标的和周期保存最后一次成功数据，失败时回退
+    _historyState: {},
     _chartRequestSeq: 0,
     _loadingChart: false,     // 防止并发 loadChart
     _lastChartKey: '',
@@ -51,7 +52,9 @@
     _overlayKlineCache: {},
     overlayMode: 'holding',
     batchPortfolioRows: [],
-    chartSummaryCollapsed: false
+    chartSummaryCollapsed: false,
+    marketCollapsed: false,
+    chartCollapsed: false
   };
 
   // ===== 排序工具 =====
@@ -192,6 +195,10 @@
     state.portfolio = stored.portfolio || [];
     state.stockGroups = stored.stockGroups || [];
     state.settings = { ...state.settings, ...stored.settings };
+    for (const key of ['marketCollapsed', 'chartCollapsed', 'chartSummaryCollapsed']) {
+      state[key] = stored.chartLayout?.[key] === true;
+    }
+    applyChartLayout();
     if (!stored.settings || !Object.prototype.hasOwnProperty.call(stored.settings, 'llmVisionModel')) {
       const preset = LLM.getPreset(state.settings.llmProvider);
       state.settings.llmVisionModel = preset ? (preset.visionModel || '') : '';
@@ -251,6 +258,7 @@
     });
     ChartManager.setCrosshairInfoElement('chartCrosshairInfo');
     ChartManager.setLegendElement('chartLegend');
+    ChartManager.setHistoryLoader(() => loadMoreHistory());
     if (state.currentStock) {
       showStockInfo(state.currentStock);
       loadChart();
@@ -509,8 +517,12 @@
       tbody.appendChild(row);
     }
     table.appendChild(tbody);
+    const scrollTop = container.scrollTop;
+    const scrollLeft = container.scrollLeft;
     container.innerHTML = '';
     container.appendChild(table);
+    container.scrollTop = scrollTop;
+    container.scrollLeft = scrollLeft;
 
     loadSparklines(stocks);
   }
@@ -674,6 +686,7 @@
     const period = state.currentPeriod;
     const requestId = ++state._chartRequestSeq;
     state._loadingChart = true;
+    updateHistoryButton();
     setChartStatus('正在加载…');
     try {
       // 自动初始化图表（如果尚未创建）
@@ -712,9 +725,10 @@
             const fetched = await StockAPI.getKline(fullCode, period, state.settings.klineCount);
             if (requestId !== state._chartRequestSeq) return;
             if (Array.isArray(fetched) && fetched.length > 0) {
-              klines = fetched;
-              state._klineCacheByPeriod[cacheKey] = fetched;
-              if (period === 'daily') state._klineCache[fullCode] = fetched;
+              // 实时报价刷新只覆盖近期数据，保留用户已加载的更早历史。
+              klines = mergeKlines(state._klineCacheByPeriod[cacheKey] || [], fetched);
+              state._klineCacheByPeriod[cacheKey] = klines;
+              if (period === 'daily') state._klineCache[fullCode] = klines;
             } else {
               klines = state._klineCacheByPeriod[cacheKey] || [];
               status = klines.length ? '行情暂不可用，显示上次成功数据' : '暂无K线数据，请重试或稍后再试';
@@ -731,6 +745,7 @@
           const pos = state.portfolio.find(p => p.fullCode === fullCode);
           const trades = pos ? pos.trades : [];
           ChartManager.renderKline(klines, trades, {
+            period,
             boll: state.indicators.boll,
             macd: state.indicators.macd,
             kdj: state.indicators.kdj,
@@ -738,6 +753,7 @@
           });
         }
         state._lastChartKey = chartKey;
+        updateHistoryButton();
       } catch (err) {
         if (requestId !== state._chartRequestSeq) return;
         console.error('[loadChart] error:', err);
@@ -765,6 +781,70 @@
     state._chartStatus = text;
     document.getElementById('chartStatusText').textContent = text;
     document.getElementById('chartRetryBtn').hidden = !retry;
+  }
+
+  function mergeKlines(previous, fetched) {
+    return [...new Map([...previous, ...fetched].map(bar => [bar.time, bar])).values()]
+      .sort((a, b) => a.time.localeCompare(b.time));
+  }
+
+  function updateHistoryButton() {
+    const button = document.getElementById('chartHistoryBtn');
+    const key = `${state.currentStock?.fullCode}:${state.currentPeriod}`;
+    const history = state._historyState[key] || {};
+    button.hidden = state.currentPeriod === 'realtime' || !state._klineCacheByPeriod[key]?.length;
+    button.disabled = !!history.loading || !!history.done;
+    button.textContent = history.loading ? '正在加载历史…' : history.done ? '已到最早可用数据' : history.error ? '重试加载更早' : '加载更早';
+    button.title = history.error || '向历史方向拖动图表也会自动加载；范围取决于数据源';
+  }
+
+  async function loadMoreHistory() {
+    const stock = state.currentStock;
+    const period = state.currentPeriod;
+    if (!stock || period === 'realtime' || state._loadingChart) return;
+    const key = `${stock.fullCode}:${period}`;
+    const cached = state._klineCacheByPeriod[key];
+    const history = state._historyState[key] ||= {};
+    if (!cached?.length || history.loading || history.done) return;
+    const requestId = state._chartRequestSeq;
+    history.loading = true;
+    history.error = '';
+    updateHistoryButton();
+    try {
+      const count = cached.length + Math.max(240, Number(state.settings.klineCount) || 120);
+      const fetched = await StockAPI.getKline(stock.fullCode, period, count);
+      if (requestId !== state._chartRequestSeq) return;
+      if (!Array.isArray(fetched) || !fetched.length) throw new Error('历史行情暂不可用，请重试');
+      const merged = mergeKlines(cached, fetched);
+      history.done = merged[0].time === cached[0].time;
+      state._klineCacheByPeriod[key] = merged;
+      if (period === 'daily') state._klineCache[stock.fullCode] = merged;
+      const trades = state.portfolio.find(p => p.fullCode === stock.fullCode)?.trades || [];
+      ChartManager.renderKline(merged, trades, { ...state.indicators, period, preserveRange: true });
+      setChartStatus(`历史范围：${merged[0].time} ~ ${merged.at(-1).time} · 共 ${merged.length} 根`);
+    } catch (err) {
+      if (requestId !== state._chartRequestSeq) return;
+      history.error = err.message || '历史加载失败，请重试';
+    } finally {
+      history.loading = false;
+      updateHistoryButton();
+    }
+  }
+
+  function applyChartLayout() {
+    document.getElementById('marketSection').classList.toggle('collapsed', state.marketCollapsed);
+    document.getElementById('chartTab').classList.toggle('chart-collapsed', state.chartCollapsed);
+    document.getElementById('chartDetail').hidden = state.chartCollapsed;
+    document.getElementById('stockSummaryTable').style.display = state.chartSummaryCollapsed ? 'none' : '';
+    for (const [id, collapsed] of [
+      ['toggleMarketBtn', state.marketCollapsed], ['toggleChartBtn', state.chartCollapsed],
+      ['toggleSummaryBtn', state.chartSummaryCollapsed]
+    ]) {
+      const button = document.getElementById(id);
+      button.textContent = collapsed ? '展开' : '收起';
+      button.setAttribute('aria-expanded', String(!collapsed));
+    }
+    document.getElementById('toggleMarketBtn').title = state.marketCollapsed ? '展开全球市场' : '收起全球市场，保留一行';
   }
 
   function updateStockDisplay(q) {
@@ -1123,6 +1203,7 @@
       { key: 'name', label: '名称' },
       { key: 'pnl', label: '盈亏' },
       { key: 'pnlPercent', label: '盈亏%' },
+      { key: 'change', label: '今日涨跌幅' },
       { key: 'marketValue', label: '市值' },
       { key: 'price', label: '现价' }
     ];
@@ -1187,6 +1268,14 @@
         span.textContent = `${label}:${value}`;
         bottom.appendChild(span);
       }
+
+      const dayChange = document.createElement('span');
+      const fresh = quotes[pos.fullCode];
+      const hasDayChange = fresh?.price > 0 && fresh.changePercent != null &&
+        fresh.changePercent !== '' && Number.isFinite(Number(fresh.changePercent));
+      dayChange.className = 'pos-day-change' + (hasDayChange ? (fresh.changePercent >= 0 ? ' price-up' : ' price-down') : '');
+      dayChange.textContent = `${pos.market === 'CRYPTO' ? '近24小时' : '今日涨跌幅'}:${hasDayChange ? formatChange(fresh.changePercent) : '--'}`;
+      bottom.appendChild(dayChange);
 
       const actions = document.createElement('div');
       actions.className = 'pos-card-actions';
@@ -2574,6 +2663,10 @@
     state.portfolio = stored.portfolio || [];
     state.stockGroups = stored.stockGroups || [];
     state.settings = { ...state.settings, ...(stored.settings || {}) };
+    for (const key of ['marketCollapsed', 'chartCollapsed', 'chartSummaryCollapsed']) {
+      state[key] = stored.chartLayout?.[key] === true;
+    }
+    applyChartLayout();
     if (!stored.settings || !Object.prototype.hasOwnProperty.call(stored.settings, 'llmVisionModel')) {
       const preset = LLM.getPreset(state.settings.llmProvider);
       state.settings.llmVisionModel = preset ? (preset.visionModel || '') : '';
@@ -2590,6 +2683,7 @@
     state.quotes = {};
     state._klineCache = {};
     state._klineCacheByPeriod = {};
+    state._historyState = {};
     state._overlayKlineCache = {};
     state._lastChartKey = '';
 
@@ -2847,14 +2941,33 @@
       });
     });
     document.getElementById('chartRetryBtn').addEventListener('click', () => loadChart());
+    document.getElementById('chartHistoryBtn').addEventListener('click', () => loadMoreHistory());
 
-    const summaryToggle = document.getElementById('toggleSummaryBtn');
     const summaryTable = document.getElementById('stockSummaryTable');
-    if (summaryToggle && summaryTable) {
-      summaryToggle.addEventListener('click', () => {
-        state.chartSummaryCollapsed = !state.chartSummaryCollapsed;
-        summaryTable.style.display = state.chartSummaryCollapsed ? 'none' : '';
-        summaryToggle.textContent = state.chartSummaryCollapsed ? '展开' : '收起';
+    summaryTable.addEventListener('wheel', event => {
+      if (event.ctrlKey || event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+      const headerHeight = summaryTable.querySelector('thead')?.getBoundingClientRect().height || 0;
+      const rowHeight = summaryTable.querySelector('tbody tr')?.getBoundingClientRect().height || 28;
+      const visibleHeight = summaryTable.clientHeight - headerHeight;
+      if (visibleHeight <= 0 || summaryTable.scrollHeight <= summaryTable.clientHeight) return;
+      // 鼠标一格可能超过整个列表视口；保留一行重叠，避免直接越过未看到的标的。
+      const limit = Math.max(rowHeight, visibleHeight - rowHeight);
+      const pixels = event.deltaY * (event.deltaMode === 1 ? rowHeight : event.deltaMode === 2 ? visibleHeight : 1);
+      event.preventDefault();
+      summaryTable.scrollTop += Math.max(-limit, Math.min(limit, pixels));
+    }, { passive: false });
+
+    for (const [id, key] of [
+      ['toggleMarketBtn', 'marketCollapsed'], ['toggleChartBtn', 'chartCollapsed'],
+      ['toggleSummaryBtn', 'chartSummaryCollapsed']
+    ]) {
+      document.getElementById(id).addEventListener('click', () => {
+        state[key] = !state[key];
+        applyChartLayout();
+        DB.set('chartLayout', {
+          marketCollapsed: state.marketCollapsed, chartCollapsed: state.chartCollapsed,
+          chartSummaryCollapsed: state.chartSummaryCollapsed
+        });
       });
     }
 
@@ -3176,6 +3289,7 @@
       // 切换 K 线源后清空缓存，强制重拉
       state._overlayKlineCache = {};
       state._klineCacheByPeriod = {};
+      state._historyState = {};
       state._klineCache = {};
       if (state.currentStock) {
         loadChart();
@@ -3193,6 +3307,7 @@
       StockAPI.init(state.settings);
       state._overlayKlineCache = {};
       state._klineCacheByPeriod = {};
+      state._historyState = {};
       state._klineCache = {};
       if (state.currentStock) {
         loadChart();

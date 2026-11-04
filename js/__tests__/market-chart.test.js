@@ -125,7 +125,7 @@ function appSandbox() {
   vm.createContext(sb);
   vm.runInContext(read('market.js'), sb);
   // 使用实际控制器，只跳过自动启动；表格网络请求与时钟由各自模块测试覆盖。
-  const expose = 'renderStockSummaryTable=()=>{};updateMarketTime=()=>{};globalThis.app={state,switchChartSource,rebuildChartChips,showStockInfo,clearStockDisplay,loadChart,startMarketRefresh,refreshMarketBar,formatPrice};';
+  const expose = 'renderStockSummaryTable=()=>{};updateMarketTime=()=>{};globalThis.app={state,switchChartSource,rebuildChartChips,showStockInfo,clearStockDisplay,loadChart,loadMoreHistory,startMarketRefresh,refreshMarketBar,formatPrice};';
   vm.runInContext(read('app.js').replace('  init();\n})();', expose + '\n})();'), sb);
   return { ...sb.app, sb, periods, elements, renders };
 }
@@ -198,4 +198,73 @@ test('index prices show points while stock prices retain their market currency',
   assert.equal(formatPrice(24000.123, 'HK', 'index'), '24000.12 点');
   assert.equal(formatPrice(210.123, 'HK'), '210.123 HKD');
   assert.equal(formatPrice(120.12, 'US'), '120.12 USD');
+});
+
+test('history prepends earlier bars once, survives refresh, and detects the provider boundary', async () => {
+  const { state, sb, loadChart, loadMoreHistory, elements } = appSandbox();
+  state.currentStock = { fullCode: 'SH:600519', market: 'SH' };
+  const bar = (time, close) => ({ time, open: close, high: close, low: close, close, volume: 1 });
+  const recent = bar('2026-10-21', 2);
+  sb.StockAPI.getKline = async () => [recent];
+  await loadChart();
+  let finish;
+  let calls = 0;
+  sb.StockAPI.getKline = async (code, period, count) => {
+    calls++;
+    assert.ok(count > state.settings.klineCount);
+    return new Promise(resolve => { finish = resolve; });
+  };
+  const pending = loadMoreHistory();
+  await loadMoreHistory();
+  assert.equal(calls, 1);
+  finish([bar('2025-01-02', 1), recent]);
+  await pending;
+  assert.equal(state._klineCacheByPeriod['SH:600519:daily'].length, 2);
+  sb.StockAPI.getKline = async () => [bar('2026-10-21', 3)];
+  await loadChart();
+  assert.equal(state._klineCacheByPeriod['SH:600519:daily'].length, 2);
+  assert.equal(state._klineCacheByPeriod['SH:600519:daily'].at(-1).close, 3);
+  await loadMoreHistory();
+  assert.equal(state._historyState['SH:600519:daily'].done, true);
+  assert.equal(elements.get('chartHistoryBtn').disabled, true);
+});
+
+test('failed history stays retryable and a stale history response cannot replace a new period', async () => {
+  const { state, sb, loadChart, loadMoreHistory, renders } = appSandbox();
+  state.currentStock = { fullCode: 'SH:600519', market: 'SH' };
+  await loadChart();
+  sb.StockAPI.getKline = async () => [];
+  await loadMoreHistory();
+  assert.match(state._historyState['SH:600519:daily'].error, /重试/);
+  assert.equal(state._historyState['SH:600519:daily'].done, undefined);
+  let finish;
+  sb.StockAPI.getKline = () => new Promise(resolve => { finish = resolve; });
+  const pending = loadMoreHistory();
+  state.currentPeriod = 'weekly';
+  sb.StockAPI.getKline = async () => [{ time: '2026-10-19', close: 5 }];
+  await loadChart();
+  finish([{ time: '2020-01-01', close: 999 }]);
+  await pending;
+  assert.equal(renders.at(-1), 5);
+  assert.equal(state._klineCacheByPeriod['SH:600519:daily'].length, 1);
+});
+
+test('crypto history paginates before the earliest opening time beyond 1000 candles', async () => {
+  const urls = [];
+  const { api } = apiSandbox(async url => {
+    const parsed = new URL(url);
+    urls.push(parsed);
+    const limit = Number(parsed.searchParams.get('limit'));
+    const end = parsed.searchParams.has('endTime') ? Number(parsed.searchParams.get('endTime')) : Date.UTC(2026, 10, 4);
+    const last = Math.floor(end / 86400000) * 86400000;
+    return { ok: true, json: async () => Array.from({ length: limit }, (_, i) => [last - (limit - i - 1) * 86400000, '10', '12', '9', '11', '100', 0, '1000']) };
+  });
+  const rows = await api.getKline('CRYPTO:BTCUSDT', 'daily', 1240);
+  assert.equal(rows.length, 1240);
+  assert.equal(urls.length, 2);
+  assert.equal(urls[0].searchParams.get('limit'), '1000');
+  assert.equal(urls[1].searchParams.get('limit'), '240');
+  assert.equal(Number(urls[1].searchParams.get('endTime')), Date.UTC(2026, 10, 4) - 999 * 86400000 - 1);
+  assert.equal(new Set(rows.map(row => row.time)).size, rows.length);
+  assert.ok(rows.every((row, i) => !i || row.time > rows[i - 1].time));
 });
