@@ -1,0 +1,54 @@
+{
+  "version": "1.4.0",
+  "source_commit": "71c4c261e131bf6a08459727ebc1875b17aeb377",
+  "package_sha256": "10f8bb2d73e0282bcf0bc7cdbba38249767fc24710e8ab26fa186da2b4ed8286",
+  "capture": "real Chrome extension with synthetic network responses",
+  "data": "Fictional quotes, holdings, trades and FX. AI sample is static and labeled; no model request, credentials or user profile.",
+  "size": [
+    1280,
+    800
+  ],
+  "screenshots": [
+    {
+      "file": "screenshots/01-global-markets.png",
+      "feature": "Global index K-lines and customizable market bar",
+      "sha256": "48413ee6defb39b54dbb0829dfcec0d78ceadd33c090fcffe0d08bd44d44f694"
+    },
+    {
+      "file": "screenshots/02-history-and-focus.png",
+      "feature": "Earlier historical candles, visible years, and collapsed market/summary areas",
+      "sha256": "8361fd3e27dbde82fd4a09adf7442b98ccec102136df2c0b381ba1f3665c42e5"
+    },
+    {
+      "file": "screenshots/03-portfolio-daily-change.png",
+      "feature": "Daily changes, total P/L, costs, and trade records",
+      "sha256": "fe35fef07fb0c5f19a0cc9d15be5baf22a4961b3339f3543cf18b6c0e304d71f"
+    },
+    {
+      "file": "screenshots/04-return-comparison.png",
+      "feature": "Actual holding returns calculated from trades and costs",
+      "sha256": "0d13b788be61db782ca47bb100fd245e79850093c309d7b07d2f7b5f37b1cedf"
+    },
+    {
+      "file": "screenshots/05-ai-skills.png",
+      "feature": "Three built-in AI Skills; visibly labeled illustrative text, no model request",
+      "sha256": "d2b1b85bcd4c581c3a5538cb8983086590c983de25922f90fad12da46bec3161"
+    },
+    {
+      "file": "screenshots/06-watchlist.png",
+      "feature": "Grouped watchlist across stocks and crypto",
+      "sha256": "7bec595252dd9659b202fb03312e33d73b0f477da2989580e5e53e5907131780"
+    },
+    {
+      "file": "screenshots/07-import-preview.png",
+      "feature": "Editable CSV/TSV trade preview before confirmation",
+      "sha256": "9f4be0809453e33ad026bb9db7d61c6d9ef87712ee7ccd7e79aa3ec96f32abcb"
+    },
+    {
+      "file": "screenshots/08-expanded-list.png",
+      "feature": "Expanded instrument list after collapsing the chart",
+      "sha256": "4dd7bbd13eeb50c3168cefa5a72bca63ee990485c9b75e6029218d6dbd807ec4"
+    }
+  ],
+  "page_errors": []
+}

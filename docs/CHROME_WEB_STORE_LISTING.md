@@ -16,35 +16,15 @@ Stock Pulse - K线行情助手
 
 浏览器侧边栏行情与持仓助手，支持全球指数与 BTC/ETH K 线、多市场股票、自选分组、交易流水、AI 分析和视觉 OCR。
 
-## 详细说明
+## 最新可复制语料
 
-Stock Pulse 是一款运行在 Chrome Side Panel 中的本地优先行情与持仓工具。无需离开当前网页，即可查看多市场股票、全球指数和 BTC/ETH K 线。点击顶部指数或币种，自动进入“市场”分组查看主图；列表跟随设置勾选项，并可在市场、持仓和自选之间切换。
+- [商店完整介绍（纯文本）](marketing/v1.4.0/STORE_DESCRIPTION_ZH.txt)：直接替换旧版详细介绍，包含 v1.4.0 的折叠、历史加载和持仓涨跌幅。
+- [宣传语料与搜索建议](marketing/v1.4.0/COPYWRITING_ZH.md)：主宣传语、建议名称与简介、更新说明、社区长短文案。
+- [整套图片与使用说明](marketing/v1.4.0/README.md)：8 张原始截图、5 张带文案宣传图，以及两种尺寸的品牌图。
 
-核心功能：
+当前名称和简短说明与 v1.4.0 manifest 一致。建议的新名称和简介需在后续新版本中同步 manifest；详细介绍和图片可单独更新。
 
-- 个股分时、日 K、周 K、月 K、年 K，以及 MA、BOLL、MACD、KDJ 和成交量。
-- 点击顶部指数或 BTC/ETH 查看市场 K 线；市场列表跟随勾选项，支持日、周、月、年 K，暂不开放市场分时。
-- 分组分别记住本次使用时上次选择的标的；指数显示点位，BTC/ETH 标明近 24 小时涨跌幅。
-- 图表显示最近一根 K 线日期，失败时保留并标明缓存数据，支持手动重试。
-- 多标的行情总览，展示最新价、涨跌幅、成交量和 30 日走势；全球市场可收起为一行，K 线区可独立收起以显示更多标的。
-- 拖动图表或点击按钮加载更早历史 K 线，保留查看位置；周、月、年 K 日期带年份。
-- 自选股搜索、批量导入、分组、排序和浏览器右键快捷加入。
-- 买入/卖出交易流水、手续费、印花税、持仓成本、市值和盈亏计算；每只持仓显示今日涨跌幅并支持排序。
-- CSV、TSV、券商复制文本和截图 OCR 导入，支持导入预览、修改、校验和去重。
-- 按真实交易流水计算的持仓收益对比，也可切换为纯股价表现。
-- 基本面速读、技术面解读、风险与机会 3 个内置 AI Skill。
-- OpenAI 兼容模型、用户自定义 Skill 和视觉模型 OCR。
-- 腾讯、东方财富、新浪、Tushare、聚合数据以及 Binance/Dex 多数据源。
-- 暗色/亮色主题、自定义强调色、交易所时区和多币种汇总。
-
-数据与隐私：
-
-- 自选股、持仓、设置和 Skill 保存在本机 Chrome 存储中。
-- API Key 和 Token 只在调用用户选择的服务时发送给对应服务商。
-- OCR 截图会发送到用户主动配置的视觉模型服务商。
-- 数据备份默认不包含 API Key 和 Token。
-
-Stock Pulse 用于行情查看和个人研究，不构成投资建议。免费行情接口可能受到网络状态、频率限制或服务可用性影响。
+旧文案中的“不上传任何用户信息”不能沿用：行情请求会发送到数据源，AI/OCR 内容会发送给用户配置的服务商。最新纯文本介绍已写明数据去向。
 
 ## v1.4.0 更新内容
 
@@ -56,17 +36,21 @@ Stock Pulse 用于行情查看和个人研究，不构成投资建议。免费�
 
 ## 详情截图
 
-以下为已有功能截图。提交 v1.4.0 前应更新涉及折叠、历史加载和持仓涨跌幅的画面，再上传最多 5 张截图；建议展示顺序：
+以下为 v1.4.0 正式发布包在隔离 Chrome 中的实际界面，使用虚构行情、持仓和交易。所有原图均为 1280×800 PNG、方角、无外边距；AI 页明确标注示例内容，未实际调用模型。
 
-1. [`07-market-kline.png`](screenshots/07-market-kline.png) — v1.3.0 全球指数、市场分组、K 线主图、数据日期和技术指标（旧版截图）。
-2. [`02-watchlist.png`](screenshots/02-watchlist.png) — 自选股、排序、批量操作和实时报价。
-3. [`03-portfolio.png`](screenshots/03-portfolio.png) — 持仓汇总、成本、市值和盈亏。
-4. [`04-batch-import-preview.png`](screenshots/04-batch-import-preview.png) — CSV/TSV 交易流水解析与导入前预览。
-5. [`05-ai-skills.png`](screenshots/05-ai-skills.png) — 内置 AI Skills 和自定义关注重点。
+商店最多上传 5 张，推荐顺序：
 
-备用图片：[`01-market-overview.png`](screenshots/01-market-overview.png) — 原有多标的行情与个股 K 线；[`06-settings-providers.png`](screenshots/06-settings-providers.png) — 多 Provider、OCR 和 AI 设置。
+1. [全球指数与市场图表](marketing/v1.4.0/screenshots/01-global-markets.png)
+2. [历史加载、带年份的日期和折叠视图](marketing/v1.4.0/screenshots/02-history-and-focus.png)
+3. [持仓与今日涨跌幅](marketing/v1.4.0/screenshots/03-portfolio-daily-change.png)
+4. [实际持仓收益对比](marketing/v1.4.0/screenshots/04-return-comparison.png)
+5. [AI 分析 Skill 与补充指令](marketing/v1.4.0/screenshots/05-ai-skills.png)
 
-全部截图为 1280×800 PNG、方角、无外边距，适合作为商店详情图。上传前可按目标语言选择对应图片，避免图片中出现任何真实账户、密钥或个人资产信息。
+备用： [分组自选股](marketing/v1.4.0/screenshots/06-watchlist.png)、[导入预览](marketing/v1.4.0/screenshots/07-import-preview.png)、[收起图表后的标的列表](marketing/v1.4.0/screenshots/08-expanded-list.png)。
+
+小宣传图使用 [440×280 品牌图](marketing/v1.4.0/promotional/small-440x280.png)，横幅使用 [1400×560 品牌图](marketing/v1.4.0/promotional/marquee-1400x560.png)。带文案的 `social/` 图片用于社区和介绍文章，商店详情优先使用上述原始界面截图。
+
+旧的 `docs/screenshots/` 保留为历史文档配图，上架时使用本次素材。
 
 ## 权限用途说明
 
@@ -98,9 +82,10 @@ Stock Pulse 用于行情查看和个人研究，不构成投资建议。免费�
 - [ ] 更新隐私政策 URL 和隐私权规范声明。
 - [ ] 复核 Host 权限与数据使用披露。
 - [ ] 使用未登录、无历史数据的 Chrome Profile 做一次安装验证。
-- [ ] 更新折叠、历史加载、持仓涨跌幅相关截图。
+- [x] 已生成并核对 v1.4.0 截图，包含折叠、历史加载、持仓涨跌幅。
+- [ ] 将最新介绍和图片实际保存到商店后台。
 
-本地构建不等于已提交或审核通过。更新已有条目时保持原商店条目和扩展 ID；本地签名 CRX 不能替代 webstore ZIP 上传。签名 CRX 的安装范围见 [安装文档](../README.md#签名-crx-安装)。
+本地构建不等于已提交或审核通过。更新已有条目时保持原商店条目和扩展 ID；本地签名 CRX 不能替代 webstore ZIP 上传。签名 CRX 的安装范围见 [安装文档](INSTALLATION.md#签名-crx-安装)。
 
 官方参考：
 
