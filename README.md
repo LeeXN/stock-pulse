@@ -1,6 +1,6 @@
 # Stock Pulse — K 线行情与持仓助手
 
-![Version](https://img.shields.io/badge/version-1.3.0-4fc3f7)
+![Version](https://img.shields.io/badge/version-1.4.0-4fc3f7)
 ![Chrome](https://img.shields.io/badge/Chrome-%E2%89%A5114-4285F4)
 ![Manifest](https://img.shields.io/badge/Manifest-V3-34A853)
 ![License](https://img.shields.io/badge/license-MIT-blue)
@@ -37,7 +37,7 @@ Stock Pulse 是一款运行在 Chrome Side Panel 中的本地优先行情与持�
 | 全球市场 | 点击顶部指数或 BTC/ETH 查看主图；勾选项同步到市场列表；支持日、周、月、年 K，暂不开放市场分时 |
 | 多标的概览 | 最新价、涨跌幅、成交量、30 日走势，多列排序，失败状态与单项重试 |
 | 自选股 | 搜索、批量文本导入、截图 OCR、右键菜单加入、分组、排序、外部行情跳转 |
-| 持仓 | 买卖流水、手续费、印花税、持仓成本、市值、当日盈亏、累计盈亏、买卖点展示 |
+| 持仓 | 买卖流水、手续费、印花税、持仓成本、市值、今日涨跌幅及排序、当日盈亏、累计盈亏、买卖点展示 |
 | 收益对比 | 按真实交易流水计算累计收益，也可切换为纯股价表现；支持隐藏与高亮标的 |
 | 批量导入 | CSV、TSV、券商复制文本、带引号字段和多行备注；导入前预览、修改、校验、去重 |
 | AI 分析 | 基本面速读、技术面解读、风险与机会 3 个内置 Skill；支持用户自定义 Skill |
@@ -53,6 +53,9 @@ Stock Pulse 是一款运行在 Chrome Side Panel 中的本地优先行情与持�
 - MA5、MA10、MA20 均线和成交量副图。
 - BOLL、MACD、KDJ 指标可独立开关。
 - 行情概览同时展示多只股票，支持按代码、名称、价格和涨跌幅排序。
+- 全球市场指数区可收起为一行，支持横向滚动；K 线区可独立收起，让行情列表显示更多标的，并记住收起状态。
+- K 线首次加载数量可在设置中调整；向历史方向拖动图表或点击“加载更早”可继续加载，保留当前查看位置，范围取决于数据源。
+- 周 K、月 K、年 K 横轴均包含年份。
 - K 线上标记持仓买入、卖出价格和时间。
 - 个股自动刷新更新实时报价与分时；市场分组同时刷新当前 K 线，请求失败时保留并标明上次成功数据。
 - 顶部指数条可自定义上证、深证、创业板、恒生、美股等指数，修改后立即生效。
@@ -70,6 +73,8 @@ Stock Pulse 是一款运行在 Chrome Side Panel 中的本地优先行情与持�
 - 实时报价失败时显示明确状态并支持单项重试。
 
 ### 持仓与交易流水
+
+- 每只持仓展示今日涨跌幅，支持按涨跌幅排序；加密资产展示近 24 小时涨跌幅。
 
 - 记录买入和卖出，支持成交日期、时间、手续费、印花税和备注。
 - 自动计算持仓数量、成本、市值、当日盈亏和累计盈亏。
@@ -110,21 +115,53 @@ Stock Pulse 是一款运行在 Chrome Side Panel 中的本地优先行情与持�
 
 ## 安装
 
-### 从发布包安装
+从 [v1.4.0 Release](https://github.com/LeeXN/stock-pulse/releases/tag/v1.4.0) 下载对应安装包，或按下方构建命令在本地生成。
 
-1. 从 [v1.3.0 Release](https://github.com/LeeXN/stock-pulse/releases/tag/v1.3.0) 下载 `stock-pulse-v1.3.0-install.zip` 并解压。
-2. 打开 `chrome://extensions/`。
-3. 开启右上角“开发者模式”。
-4. 点击“加载已解压的扩展程序”，选择解压后的 `stock-pulse-v1.3.0` 文件夹（里面直接包含 `manifest.json`）。
-5. 点击工具栏中的 Stock Pulse 图标打开 Side Panel。
+| 文件 | 使用方式 |
+| --- | --- |
+| `stock-pulse-v1.4.0-webstore.zip` | 商店上传包，直接上传到 Chrome Web Store Developer Dashboard，无需解压或重新压缩 |
+| `stock-pulse-v1.4.0.crx` | 签名 CRX3 包，供允许商店外安装的环境使用 |
+| `stock-pulse-v1.4.0-install.zip` | 本地验收包，解压后使用“加载已解压的扩展程序” |
 
-构建发布包：
+### Chrome Web Store 发布与安装
+
+1. 开发者在 [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole/) 打开原有条目，上传 `stock-pulse-v1.4.0-webstore.zip`；首次上架才新建条目。
+2. 包内 `manifest.json` 位于 ZIP 根目录，版本为 `1.4.0`；商店现有版本必须低于此版本。
+3. 按 [商店文案与权限说明](docs/CHROME_WEB_STORE_LISTING.md) 填写详情、隐私政策和截图，再提交审核。
+4. 审核通过并发布后，普通用户从商店页面点击“添加至 Chrome”安装，已安装用户按商店更新流程升级。
+
+生成上传包不会自动上架，也不会得到商店签名的安装包。商店签名 CRX 可在上传后从 Developer Dashboard 下载。
+
+### 签名 CRX 安装
+
+`.crx` 是 Chrome 扩展安装包。
+
+Linux 等允许商店外安装的环境，可打开 `chrome://extensions/`、开启“开发者模式”，将 `stock-pulse-v1.4.0.crx` 拖入页面并按提示确认；托管环境须按管理员策略安装。
+
+普通 Windows/macOS Chrome 不支持任意本地自签名 CRX 的直接安装。遇到“只能通过 Chrome 应用商店安装”时，应使用商店安装，或按下节流程进行发布前验收；更改文件后缀无法解除此限制。见 [Chrome 官方安装说明](https://developer.chrome.com/docs/extensions/how-to/distribute/install-extensions)。
+
+CRX 沿用本地签名私钥以保持原 CRX 身份；它不代表商店签名，也不保证与以前的解压版使用同一扩展 ID。
+
+### 发布前本地验收与更新
+
+1. 解压 `stock-pulse-v1.4.0-install.zip`，打开附带的 `INSTALL.txt`。
+2. Chrome 打开 `chrome://extensions/`，开启右上角“开发者模式”。
+3. 点击“加载已解压的扩展程序”，选择解压后的 `stock-pulse-v1.4.0` 文件夹，确保文件夹内直接有 `manifest.json`。不能直接选择 ZIP 文件。
+4. 点击工具栏中的 Stock Pulse 图标打开侧边栏。
+
+更新现有解压版时，先在插件设置中导出备份，将新版运行文件覆盖到原扩展目录，再点击该扩展的“重新加载”。保留原扩展目录与身份，避免因更换扩展 ID 而读不到原持仓；更换安装方式或 ID 时需导入备份。
+
+### 构建与校验
 
 ```bash
 python3 scripts/build_release.py --crx
+cd dist/v1.4.0
+sha256sum -c SHA256SUMS
 ```
 
-文件生成在 `dist/v1.3.0/`。手动安装使用 `*-install.zip`；商店上传使用 `*-webstore.zip`。CRX 用于允许商店外安装的环境；普通 Windows/macOS Chrome 请按上面的解压加载流程安装。
+构建会生成上述三种包、解压目录、`SHA256SUMS`、`BUILD.json` 和发布说明。已有输出目录不会覆盖；同版本重建可指定 `--output-dir dist/v1.4.0-candidate-2`。
+
+签名私钥保存在本机 `.local/release/chrome-signing-key.pem`，请保留它以便后续 CRX 更新。私钥、个人设置、API Key 和开发目录不进入发布包。维护者按 [发布流程](docs/RELEASING.md) 提交 GitHub、创建 tag 和 Release。
 
 ### 从源码安装
 
@@ -133,7 +170,7 @@ git clone https://github.com/LeeXN/stock-pulse.git
 cd stock-pulse
 ```
 
-然后按上面的开发者模式步骤选择仓库根目录。需要 Chrome 114 或更高版本。
+然后按上面的本地验收步骤选择仓库根目录。需要 Chrome 114 或更高版本。
 
 ## 常用操作
 
@@ -144,6 +181,14 @@ cd stock-pulse
 3. 切换日、周、月、年 K，或开启 BOLL、MACD、KDJ；市场分组第一版暂不开放分时。
 4. 在“市场 / 持仓 / 自选”之间切换，恢复各分组本次使用时上次选择的标的。
 5. 加载失败可点击“重试”；显示缓存时会标明上次成功数据与最近一根 K 线日期。BTC/ETH 涨跌幅为近 24 小时口径。
+
+### 展开列表与查看更早 K 线
+
+- 顶部市场区右侧点击“收起”，保留一行指数；可横向滚动查看其余指数，点击“展开”恢复。
+- 在“K线图”栏点击“收起”，行情概览自动占用剩余空间；点击“展开”恢复图表。行情概览也有独立开关。
+- 在图表中向右拖动以查看左侧更早日期，接近已加载数据的左边界会继续加载；也可点击“加载更早”。调整时间轴缩放、查看更早范围时同样支持加载。
+- 数据源没有更早数据时显示“已到最早可用数据”；失败时可点击“重试加载更早”。
+- 持仓卡片新增“今日涨跌幅”，点击同名排序按钮可切换顺序。加密资产采用近 24 小时口径。
 
 ### 添加自选股
 
@@ -182,14 +227,15 @@ cd stock-pulse
 
 市场分组的指数使用东方财富，BTC/ETH 使用 Binance，不跟随个股数据源设置。
 
-## v1.3.0 更新摘要
+## v1.4.0 更新摘要
 
-- 点击顶部指数或 BTC/ETH，进入“市场”分组查看日、周、月、年 K。
-- 列表跟随顶部勾选项，各分组记住上次选择，指数显示点位。
-- 增加数据日期、缓存失败提示和重试，修复旧请求覆盖图表、缺失指数回退和关闭刷新无效。
-- 新增安装 ZIP、商店发布 ZIP 和签名 CRX 的构建流程。
+- 全球市场可收起为一行，K 线区独立收起，让列表展示更多标的。
+- 修复列表滚轮跳过标的，重绘时保持滚动位置。
+- 持仓显示今日涨跌幅，并支持排序。
+- 拖动或点击按钮加载更早历史 K 线，保持当前查看位置；周、月、年 K 日期带年份。
+- 提供商店上传 ZIP 和签名 CRX3，并明确不同 Chrome 环境的安装方法。
 
-完整内容见 [RELEASE_NOTES_v1.3.0.md](RELEASE_NOTES_v1.3.0.md) 和 [CHANGELOG.md](CHANGELOG.md)。商店文案见 [docs/CHROME_WEB_STORE_LISTING.md](docs/CHROME_WEB_STORE_LISTING.md)。
+完整内容见 [RELEASE_NOTES_v1.4.0.md](RELEASE_NOTES_v1.4.0.md) 和 [CHANGELOG.md](CHANGELOG.md)。商店文案见 [docs/CHROME_WEB_STORE_LISTING.md](docs/CHROME_WEB_STORE_LISTING.md)。
 
 ## 项目结构
 

@@ -63,7 +63,8 @@ const DB = {
     if (settings.baiduSecretKey) delete settings.baiduSecretKey;
     const currentStock = await this.get('currentStock', null);
     const stockGroups = await this.get('stockGroups', []);
-    return { watchlist, portfolio, settings, currentStock, stockGroups };
+    const chartLayout = await this.get('chartLayout', {});
+    return { watchlist, portfolio, settings, currentStock, stockGroups, chartLayout };
   },
 
   async exportAll(options = {}) {
@@ -104,6 +105,9 @@ const DB = {
     if (Object.prototype.hasOwnProperty.call(data, 'stockGroups')) {
       if (!Array.isArray(data.stockGroups)) throw new Error('stockGroups 必须是数组');
       await this.set('stockGroups', data.stockGroups);
+    }
+    if (data.chartLayout && typeof data.chartLayout === 'object' && !Array.isArray(data.chartLayout)) {
+      await this.set('chartLayout', data.chartLayout);
     }
   },
 

@@ -25,6 +25,11 @@ const ChartManager = {
   _market: 'SH',
   _settings: {},
   _timeZone: 'Asia/Shanghai',
+  _period: 'daily',
+  _historyLoader: null,
+  _historyFrom: null,
+  _historyInputUntil: 0,
+  _rendering: false,
 
   // MA颜色
   MA_COLORS: {
@@ -92,6 +97,22 @@ const ChartManager = {
       }
     });
 
+    for (const type of ['pointerdown', 'pointermove', 'wheel']) {
+      this._container.addEventListener(type, event => {
+        if (type !== 'pointermove' || event.buttons) this._historyInputUntil = Date.now() + 1500;
+      }, { passive: true });
+    }
+    this.chart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+      const previousFrom = this._historyFrom;
+      this._historyFrom = range?.from ?? null;
+      // 初次 fitContent 也在左边界；只有向历史方向移动时才请求，避免自动连页。
+      if (!this._rendering && this.candleSeries && range && previousFrom !== null &&
+          range.from < previousFrom && range.from < 20 && Date.now() < this._historyInputUntil) {
+        this._historyInputUntil = 0;
+        this._historyLoader?.();
+      }
+    });
+
     // Volume series at the bottom
     this.volumeSeries = this.chart.addHistogramSeries({
       priceFormat: { type: 'volume' },
@@ -130,8 +151,18 @@ const ChartManager = {
     }
   },
 
-  _formatAxisTime(time) {
-    if (typeof TimeUtils === 'undefined') return String(time || '');
+  setHistoryLoader(loader) {
+    this._historyLoader = loader;
+  },
+
+  _formatAxisTime(time, period = this._period) {
+    const date = time && typeof time === 'object' && time.year
+      ? `${time.year}-${String(time.month).padStart(2, '0')}-${String(time.day).padStart(2, '0')}`
+      : (typeof time === 'string' ? time : '');
+    if (date && ['weekly', 'monthly', 'yearly'].includes(period)) {
+      return period === 'yearly' ? date.slice(0, 4) : period === 'monthly' ? date.slice(0, 7) : date.slice(0, 10);
+    }
+    if (typeof TimeUtils === 'undefined') return date || String(time || '');
     if (time && typeof time === 'object' && time.year) {
       return `${String(time.month).padStart(2, '0')}-${String(time.day).padStart(2, '0')}`;
     }
@@ -239,6 +270,13 @@ const ChartManager = {
     if (!this.chart) return;
 
     const previousRange = this.chart.timeScale().getVisibleLogicalRange();
+    const firstTime = this.candleSeries?.data()[0]?.time;
+    // 逻辑下标随前插历史数据平移；补偿后继续看到原来的日期和缩放比例。
+    const prepended = firstTime ? Math.max(0, klineData.findIndex(d => d.time === firstTime)) : 0;
+    const shiftedRange = previousRange && { from: previousRange.from + prepended, to: previousRange.to + prepended };
+    this._rendering = true;
+    this._period = options.period || 'daily';
+    this.chart.applyOptions({ timeScale: { tickMarkMaxCharacterLength: this._period === 'weekly' ? 10 : 8 } });
     this._clearSeries();
     this._indicators.boll = !!options.boll;
     this._indicators.macd = !!options.macd;
@@ -290,7 +328,9 @@ const ChartManager = {
     // Trade markers
     if (trades.length > 0) this._renderTradeMarkers(trades);
 
-    this._restoreOrFit(!!options.preserveRange, previousRange);
+    this._restoreOrFit(!!options.preserveRange, shiftedRange);
+    this._historyFrom = this.chart.timeScale().getVisibleLogicalRange()?.from ?? null;
+    this._rendering = false;
   },
 
   /**
@@ -334,6 +374,7 @@ const ChartManager = {
    */
   renderRealtime(realtimeData, options = {}) {
     if (!this.chart) return;
+    this._period = 'realtime';
     this.setTimeContext(options.market, options.settings);
     const previousRange = this.chart.timeScale().getVisibleLogicalRange();
     this._clearSeries();
@@ -727,7 +768,7 @@ const ChartManager = {
       },
       timeScale: {
         borderColor: '#2a3a55', timeVisible: true, secondsVisible: false, rightOffset: 5,
-        tickMarkFormatter: time => this._formatAxisTime(time)
+        tickMarkFormatter: time => this._formatAxisTime(time, 'daily')
       },
       localization: {
         locale: 'zh-CN', dateFormat: 'yyyy-MM-dd',

@@ -25,7 +25,8 @@ function loadChartManager() {
     parseFloat, parseInt, isNaN
   };
   vm.createContext(sandbox);
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'chart.js'), 'utf8') +
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'time.js'), 'utf8') +
+    fs.readFileSync(path.join(__dirname, '..', 'chart.js'), 'utf8') +
     '\nthis.__ChartManager = ChartManager;', sandbox);
   return sandbox.__ChartManager;
 }
@@ -48,6 +49,42 @@ test('wall-clock realtime values use the market timezone', () => {
   assert.equal(new Date(shanghai * 1000).toISOString(), '2026-06-01T01:30:00.000Z');
   assert.equal(new Date(newYork * 1000).toISOString(), '2026-06-01T13:30:00.000Z');
   assert.equal(time.formatDateTime(shanghai, 'Asia/Shanghai'), '2026-06-01 09:30');
+});
+
+test('long-period chart axes include years for both string and business-day dates', () => {
+  const chart = loadChartManager();
+  for (const time of ['2025-03-31', { year: 2025, month: 3, day: 31 }]) {
+    assert.equal(chart._formatAxisTime(time, 'weekly'), '2025-03-31');
+    assert.equal(chart._formatAxisTime(time, 'monthly'), '2025-03');
+    assert.equal(chart._formatAxisTime(time, 'yearly'), '2025');
+    assert.equal(chart._formatCrosshairTime(time), '2025-03-31');
+  }
+});
+
+test('prepending history keeps the same visible dates and zoom instead of fitting all bars', () => {
+  const chart = loadChartManager();
+  let visible = { from: -0.5, to: 1.5 };
+  let candles = [{ time: '2025-02-01' }, { time: '2025-03-01' }];
+  const scale = {
+    getVisibleLogicalRange: () => visible,
+    setVisibleLogicalRange: range => { visible = range; },
+    fitContent: () => { throw new Error('history must not reset the visible range'); }
+  };
+  chart.chart = {
+    timeScale: () => scale, applyOptions() {},
+    addCandlestickSeries: () => ({ setData: rows => { candles = rows; }, data: () => candles })
+  };
+  chart.candleSeries = { data: () => candles };
+  chart.volumeSeries = { setData() {} };
+  chart._clearSeries = () => {};
+  chart._renderMA = () => {};
+  chart._applyLayout = () => {};
+  chart._renderKlineLegend = () => {};
+  chart.renderKline([{ time: '2025-01-01' }, ...candles], [], { period: 'monthly', preserveRange: true });
+  assert.equal(visible.from, 0.5);
+  assert.equal(visible.to, 2.5);
+  assert.equal(visible.to - visible.from, 2);
+  assert.equal(chart._period, 'monthly');
 });
 
 test('batch portfolio import supports legacy, buy/sell and TSV formats', () => {
